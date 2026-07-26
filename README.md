@@ -62,7 +62,6 @@ Whether you are an individual looking to expand your network, a company seeking 
 
 Here are some glimpses of the SkillLinked application interface. 
 
-*(**Note:** The images you provided have been integrated here. Ensure they are saved in the `docs/screenshots/` folder with these names).*
 
 <div align="center">
   <img src="docs/screenshots/dashboard.png" alt="Dashboard Overview" width="48%" style="border-radius: 8px; margin-right: 2%;"/>
