@@ -146,8 +146,17 @@ const Navbar = ({ onToggleSidebar }) => {
                     onClick={() => setProfileOpen(!profileOpen)}
                     className="flex items-center gap-2 pl-1 pr-3 py-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-dark-card transition-colors"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-sm shadow-sm">
-                      {user ? getInitials(user.name) : 'U'}
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-sm shadow-sm overflow-hidden">
+                      {(user?.profilePicture && user.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') || 
+                       (user?.avatar && user.avatar !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') ? (
+                        <img 
+                          src={user.profilePicture && user.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? user.profilePicture : user.avatar} 
+                          alt="Profile" 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        user ? getInitials(user.name || user.fullName || user.username) : 'U'
+                      )}
                     </div>
                     <FaChevronDown className={`text-xs text-gray-400 transition-transform duration-200 ${profileOpen ? 'rotate-180' : ''}`} />
                   </button>

@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDispatch } from 'react-redux';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { login } from '../../redux/slices/authSlice';
 import api from '../../services/api';
-import { FaEye, FaEyeSlash, FaGoogle, FaGithub, FaLinkedin, FaShieldAlt } from 'react-icons/fa';
+import { FaEye, FaEyeSlash, FaGithub, FaLinkedin, FaShieldAlt } from 'react-icons/fa';
+import { GoogleLogin } from '@react-oauth/google';
 
 const Login = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(location.state?.message || '');
   const [loginType, setLoginType] = useState('user'); // 'user' | 'admin'
   const [form, setForm] = useState({ identifier: '', email: '', password: '' });
 
@@ -19,6 +22,7 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    setSuccess('');
 
     try {
       let responseData;
@@ -71,6 +75,46 @@ const Login = () => {
     }
   };
 
+  // Handle Google credential response
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      setIsLoading(true);
+      const { credential } = credentialResponse; // ID token
+      const res = await api.post('/auth/google', { idToken: credential });
+      const data = res; // interceptor unwraps
+      // Store tokens
+      localStorage.setItem('token', data.accessToken);
+      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+      // Dispatch login
+      dispatch(
+        login({
+          user: {
+            _id: data._id,
+            fullName: data.fullName,
+            username: data.username,
+            email: data.email,
+            role: data.role,
+            profilePicture: data.profilePicture || '',
+          },
+          token: data.accessToken,
+        })
+      );
+      // Navigate to dashboard (Google sign‑in is for users only)
+      navigate('/app/dashboard');
+    } catch (err) {
+      console.error('Google login error:', err);
+      setError('Google sign‑in failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setError('Google login was unsuccessful. Please try again.');
+  };
+
+
+
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
       
@@ -107,18 +151,42 @@ const Login = () => {
             </motion.div>
           )}
 
+          {/* Success Message */}
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400 text-sm font-medium text-center"
+            >
+              {success}
+            </motion.div>
+          )}
+
           {/* Social Login */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            {[
-              { Icon: FaGoogle, label: 'Google', color: 'hover:text-red-500 hover:border-red-300' },
-              { Icon: FaGithub, label: 'GitHub', color: 'hover:text-gray-900 dark:hover:text-white hover:border-gray-400' },
-              { Icon: FaLinkedin, label: 'LinkedIn', color: 'hover:text-blue-600 hover:border-blue-400' },
-            ].map(({ Icon, label, color }) => (
-              <button key={label} className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-dark-bg/50 text-text-secondary dark:text-gray-400 font-semibold text-xs transition-all ${color}`}>
-                <Icon className="text-xl" />
-                {label}
-              </button>
-            ))}
+          <div className="flex flex-wrap justify-center gap-4 mb-6">
+            {loginType === 'user' && (
+              <div className="flex items-center justify-center w-full mb-2">
+                <GoogleLogin 
+                  onSuccess={handleGoogleSuccess} 
+                  onError={handleGoogleError} 
+                  text="continue_with"
+                  theme="outline"
+                  size="large"
+                  prompt="select_account"
+                />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3 w-full">
+              {[
+                { Icon: FaGithub, label: 'GitHub', color: 'hover:text-gray-900 dark:hover:text-white hover:border-gray-400' },
+                { Icon: FaLinkedin, label: 'LinkedIn', color: 'hover:text-blue-600 hover:border-blue-400' },
+              ].map(({ Icon, label, color }) => (
+                <button key={label} className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-dark-bg/50 text-text-secondary dark:text-gray-400 font-semibold text-xs transition-all ${color}`}>
+                  <Icon className="text-xl" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center my-6">
@@ -240,30 +308,6 @@ const Login = () => {
               ) : 'Sign In'}
             </motion.button>
           </form>
-
-          {loginType === 'user' && (
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200 dark:border-gray-700"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white/80 dark:bg-dark-card/80 text-gray-500">Or continue with</span>
-                </div>
-              </div>
-              
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={() => alert('Google Auth to be implemented with real Client ID')}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3.5 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-dark-bg text-text-primary dark:text-white font-bold hover:bg-gray-50 dark:hover:bg-dark-card transition-colors shadow-sm"
-                >
-                  <FaGoogle className="text-red-500 text-lg" />
-                  Google
-                </button>
-              </div>
-            </div>
-          )}
 
           <p className="text-center mt-6 text-sm font-medium text-text-secondary dark:text-gray-400">
             Don't have an account?{' '}

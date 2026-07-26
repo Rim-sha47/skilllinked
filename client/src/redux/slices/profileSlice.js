@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { updateUser } from './authSlice';
 import api from '../../services/api';
 
 // Async Thunks
@@ -7,6 +8,18 @@ export const fetchMyProfile = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const response = await api.get('/profiles/me');
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const fetchProfileById = createAsyncThunk(
+  'profile/fetchProfileById',
+  async (userId, { rejectWithValue }) => {
+    try {
+      const response = await api.get(`/profiles/user/${userId}`);
       return response;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -26,25 +39,72 @@ export const updateBasicInfo = createAsyncThunk(
   }
 );
 
+
 export const updateAvatar = createAsyncThunk(
   'profile/updateAvatar',
-  async (formData, { rejectWithValue }) => {
+  async (formData, { dispatch, rejectWithValue }) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/profiles/avatar`, {
+      console.log('Uploading avatar, token:', token);
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/profiles/avatar`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`
         },
         body: formData
       });
+      console.log('Avatar upload response status:', response.status);
       if (!response.ok) {
+        const errText = await response.text();
+        console.error('Upload failed response body:', errText);
         throw new Error('Upload failed');
       }
       const data = await response.json();
+      console.log('Avatar upload success data:', data);
+      
+      // Update the user in auth slice so it propagates everywhere
+      dispatch(updateUser(data));
+      
+      return data;
+    } catch (error) {
+      console.error('Avatar upload thunk error:', error);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const removeAvatar = createAsyncThunk(
+  'profile/removeAvatar',
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/profiles/avatar`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Removal failed');
+      }
+      const data = await response.json();
+      dispatch(updateUser(data));
       return data;
     } catch (error) {
       return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const updateUserInfo = createAsyncThunk(
+  'profile/updateUserInfo',
+  async (userInfo, { dispatch, rejectWithValue }) => {
+    try {
+      const data = await api.put('/profiles/user-info', userInfo);
+      dispatch(updateUser(data));
+      return data;
+    } catch (error) {
+      return rejectWithValue(error.message || 'An error occurred');
     }
   }
 );
@@ -167,6 +227,20 @@ const profileSlice = createSlice({
         state.data = action.payload;
       })
       .addCase(fetchMyProfile.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      
+      // Fetch Profile By Id
+      .addCase(fetchProfileById.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchProfileById.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.data = action.payload;
+      })
+      .addCase(fetchProfileById.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
       })

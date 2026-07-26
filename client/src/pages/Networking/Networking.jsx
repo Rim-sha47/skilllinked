@@ -17,8 +17,11 @@ import {
 const UserAvatar = ({ user, size = 'md' }) => {
   const sizeClass = size === 'lg' ? 'w-16 h-16 text-xl' : 'w-12 h-12 text-base';
   const initials = user?.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?';
-  return user?.avatar && !user.avatar.includes('anonymous-avatar') ? (
-    <img src={user.avatar} alt={user.name} className={`${sizeClass} rounded-full object-cover ring-2 ring-primary/30`} />
+  const pic = user?.profilePicture || user?.avatar || null;
+  const hasAvatar = pic && pic !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg';
+  
+  return hasAvatar ? (
+    <img src={pic} alt={user?.name || 'User'} className={`${sizeClass} rounded-full object-cover ring-2 ring-primary/30`} />
   ) : (
     <div className={`${sizeClass} rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center font-bold text-white ring-2 ring-primary/30`}>
       {initials}

@@ -1,15 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import ReactCrop from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { Button } from '../../components/common/Button';
+import { getCroppedImg } from '../../utils/cropImage';
 
 export default function ProfilePicForm({ onSubmit, isSubmitting }) {
-  const [file, setFile] = useState(null);
+  const [upImg, setUpImg] = useState();
+  const imgRef = useRef(null);
+  const [crop, setCrop] = useState({ unit: '%', width: 50, aspect: 1 });
+  const [completedCrop, setCompletedCrop] = useState(null);
 
-  const handleSubmit = (e) => {
+  const onSelectFile = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => setUpImg(reader.result));
+      reader.readAsDataURL(e.target.files[0]);
+    }
+  };
+
+  const onLoad = (e) => {
+    imgRef.current = e.currentTarget;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file) return;
-    const fd = new FormData();
-    fd.append('file', file);
-    onSubmit(fd);
+    if (!completedCrop || !imgRef.current) return;
+    
+    try {
+      const croppedBlob = await getCroppedImg(imgRef.current, completedCrop, 'profile.jpg');
+      const fd = new FormData();
+      fd.append('file', croppedBlob);
+      onSubmit(fd);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
@@ -17,12 +41,25 @@ export default function ProfilePicForm({ onSubmit, isSubmitting }) {
       <input
         type="file"
         accept="image/*"
-        onChange={(e) => setFile(e.target.files[0])}
+        onChange={onSelectFile}
         required
-        className="w-full p-2 border rounded-lg"
+        className="w-full p-2 border rounded-lg dark:border-gray-700 dark:bg-dark-card dark:text-gray-200"
       />
-      <Button type="submit" disabled={isSubmitting} className="w-full shadow-glow">
-        {isSubmitting ? 'Uploading...' : 'Upload'}
+      {upImg && (
+        <div className="flex justify-center my-4 bg-gray-50 dark:bg-gray-900 rounded-lg p-2 overflow-hidden max-h-80">
+          <ReactCrop
+            crop={crop}
+            onChange={(c) => setCrop(c)}
+            onComplete={(c) => setCompletedCrop(c)}
+            aspect={1}
+            circularCrop
+          >
+            <img src={upImg} onLoad={onLoad} alt="Upload Preview" style={{ maxHeight: '300px' }} />
+          </ReactCrop>
+        </div>
+      )}
+      <Button type="submit" disabled={isSubmitting || !completedCrop} className="w-full shadow-glow">
+        {isSubmitting ? 'Uploading...' : 'Upload & Save'}
       </Button>
     </form>
   );

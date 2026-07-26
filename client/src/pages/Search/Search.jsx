@@ -253,11 +253,17 @@ const Search = () => {
                         className="p-4 rounded-2xl bg-white dark:bg-dark-card border border-gray-200 dark:border-gray-700/60 shadow-sm flex items-center justify-between gap-4"
                       >
                         <div className="flex items-center space-x-3.5 min-w-0">
-                          <img
-                            src={u.profilePicture || 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg'}
-                            alt={u.fullName}
-                            className="w-12 h-12 rounded-full object-cover flex-shrink-0 border-2 border-primary/20"
-                          />
+                          {(u?.profilePicture && u.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') || (u?.avatar && u.avatar !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') ? (
+                            <img
+                              src={u.profilePicture && u.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? u.profilePicture : u.avatar}
+                              alt={u.fullName}
+                              className="w-12 h-12 rounded-full object-cover flex-shrink-0 border-2 border-primary/20"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center font-bold text-white flex-shrink-0 border-2 border-primary/20">
+                              {(u.fullName || u.username || 'U').charAt(0).toUpperCase()}
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <Link
                               to={`/app/profile/${u._id}`}

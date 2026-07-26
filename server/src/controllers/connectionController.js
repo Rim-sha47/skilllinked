@@ -33,6 +33,17 @@ exports.sendRequest = async (req, res) => {
 
     await connection.save();
 
+    // Notify receiver
+    const Notification = require('../models/Notification');
+    const sender = await User.findById(senderId);
+    const notif = await Notification.create({
+      user: receiverId,
+      sender: senderId,
+      type: 'connection_request',
+      content: `${sender.fullName || sender.username} sent you a connection request.`,
+    });
+    if (req.io) req.io.to(receiverId.toString()).emit('notification', notif);
+
     res.status(201).json({ message: 'Connection request sent' });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -76,6 +87,16 @@ exports.acceptRequest = async (req, res) => {
           relatedId: sender._id
         }
       ]);
+
+      // Notify sender that their request was accepted
+      const Notification = require('../models/Notification');
+      const notif = await Notification.create({
+        user: sender._id,
+        sender: receiver._id,
+        type: 'connection_accepted',
+        content: `${receiver.fullName || receiver.username} accepted your connection request.`,
+      });
+      if (req.io) req.io.to(sender._id.toString()).emit('notification', notif);
     }
 
     res.json({ message: 'Connection request accepted' });
@@ -205,6 +226,16 @@ exports.followUser = async (req, res) => {
     if (!targetUser.followers.includes(currentUserId)) {
       targetUser.followers.push(currentUserId);
       await targetUser.save();
+
+      // Notify targetUser
+      const Notification = require('../models/Notification');
+      const notif = await Notification.create({
+        user: targetUserId,
+        sender: currentUserId,
+        type: 'new_follower',
+        content: `${currentUser.fullName || currentUser.username} started following you.`,
+      });
+      if (req.io) req.io.to(targetUserId.toString()).emit('notification', notif);
     }
 
     res.json({ message: 'User followed successfully', followersCount: targetUser.followers.length });

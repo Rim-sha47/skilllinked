@@ -34,7 +34,22 @@ const Dashboard = () => {
     basicInfo: false
   });
 
-  const openModal = (type) => setModals({ ...modals, [type]: true });
+  const [editItem, setEditItem] = useState(null);
+
+  const openModal = (type, item = null) => {
+    // For date inputs, we need to convert ISO strings to YYYY-MM-DD
+    if (item && (item.from || item.to || item.issueDate)) {
+      const formattedItem = { ...item };
+      if (formattedItem.from) formattedItem.from = formattedItem.from.split('T')[0];
+      if (formattedItem.to) formattedItem.to = formattedItem.to.split('T')[0];
+      if (formattedItem.issueDate) formattedItem.issueDate = formattedItem.issueDate.split('T')[0];
+      if (formattedItem.expirationDate) formattedItem.expirationDate = formattedItem.expirationDate.split('T')[0];
+      setEditItem(formattedItem);
+    } else {
+      setEditItem(item);
+    }
+    setModals(prev => ({ ...prev, [type]: true }));
+  };
   const closeModal = (type) => setModals({ ...modals, [type]: false });
 
   const handleSkillSubmit = async (data) => {
@@ -45,14 +60,25 @@ const Dashboard = () => {
     } catch (err) { console.error(err); }
   };
 
+  // ----- Avatar upload handling for Dashboard -----
+  const [isUploading, setIsUploading] = React.useState(false);
   const handleProfilePicSubmit = async (formData) => {
     try {
+      console.log('Uploading avatar, file:', formData.get('file'));
+      setIsUploading(true);
       const res = await dispatch(updateAvatar(formData)).unwrap();
+      console.log('Avatar upload response from thunk:', res);
       if (res && res.profilePicture) {
         dispatch(updateUser({ profilePicture: res.profilePicture, avatar: res.profilePicture }));
+        // Refresh profile data so Dashboard avatar updates
+        dispatch(fetchMyProfile());
       }
       closeModal('profilePic');
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error('Avatar upload error in Dashboard handler:', err);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleBasicInfoSubmit = async (data) => {
@@ -65,10 +91,19 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/profiles/dashboard`, {
+        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/profiles/dashboard`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setDashboardData(res.data);
+        // Merge with safe defaults to prevent null crashes
+        setDashboardData(prev => ({
+          ...prev,
+          profileViews: res.data?.profileViews ?? 0,
+          connections: res.data?.connections ?? 0,
+          applications: res.data?.applications ?? 0,
+          unreadMessages: res.data?.unreadMessages ?? 0,
+          profileCompletion: res.data?.profileCompletion ?? 20,
+          recentActivity: res.data?.recentActivity ?? [],
+        }));
       } catch (err) {
         console.error('Failed to fetch dashboard stats', err);
       }
@@ -80,12 +115,12 @@ const Dashboard = () => {
     }
   }, [token, dispatch]);
 
-  // Dynamic data for widgets
+  // Dynamic data for widgets — use safe fallbacks to prevent crash on null
   const stats = [
-    { id: 1, name: 'Profile Views', stat: dashboardData.profileViews.toLocaleString(), icon: FaEye, color: 'text-blue-500', bg: 'bg-blue-500/10 dark:bg-blue-500/20', change: '+12.5%' },
-    { id: 2, name: 'Connections', stat: dashboardData.connections.toLocaleString(), icon: FaUserFriends, color: 'text-green-500', bg: 'bg-green-500/10 dark:bg-green-500/20', change: 'Network' },
-    { id: 3, name: 'Applications', stat: dashboardData.applications.toString(), icon: FaBriefcase, color: 'text-purple-500', bg: 'bg-purple-500/10 dark:bg-purple-500/20', change: 'Active' },
-    { id: 4, name: 'Unread Messages', stat: dashboardData.unreadMessages.toString(), icon: FaEnvelope, color: 'text-yellow-500', bg: 'bg-yellow-500/10 dark:bg-yellow-500/20', change: 'New' },
+    { id: 1, name: 'Profile Views', stat: (dashboardData.profileViews ?? 0).toLocaleString(), icon: FaEye, color: 'text-blue-500', bg: 'bg-blue-500/10 dark:bg-blue-500/20', change: '+12.5%' },
+    { id: 2, name: 'Connections', stat: (dashboardData.connections ?? 0).toLocaleString(), icon: FaUserFriends, color: 'text-green-500', bg: 'bg-green-500/10 dark:bg-green-500/20', change: 'Network' },
+    { id: 3, name: 'Applications', stat: (dashboardData.applications ?? 0).toString(), icon: FaBriefcase, color: 'text-purple-500', bg: 'bg-purple-500/10 dark:bg-purple-500/20', change: 'Active' },
+    { id: 4, name: 'Unread Messages', stat: (dashboardData.unreadMessages ?? 0).toString(), icon: FaEnvelope, color: 'text-yellow-500', bg: 'bg-yellow-500/10 dark:bg-yellow-500/20', change: 'New' },
   ];
 
   return (
@@ -97,7 +132,7 @@ const Dashboard = () => {
 
       <Modal isOpen={modals.profilePic} onClose={() => closeModal('profilePic')}>
         <h2 className="text-xl font-bold mb-4 text-text-primary dark:text-white">Update Profile Picture</h2>
-        <ProfilePicForm onSubmit={handleProfilePicSubmit} isSubmitting={false} />
+        <ProfilePicForm onSubmit={handleProfilePicSubmit} isSubmitting={isUploading} />
       </Modal>
 
       <Modal isOpen={modals.basicInfo} onClose={() => closeModal('basicInfo')}>
@@ -171,10 +206,11 @@ const Dashboard = () => {
               <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
                 <div className="relative w-24 h-24 flex-shrink-0 group cursor-pointer" onClick={() => openModal('profilePic')}>
                   <div className="w-full h-full rounded-full overflow-hidden border-2 border-primary bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
-                    {user?.profilePicture || user?.avatar ? (
-                      <img src={user.profilePicture || user.avatar} alt="Profile" className="w-full h-full object-cover" />
+                    {(user?.profilePicture && user.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') || 
+                     (user?.avatar && user.avatar !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') ? (
+                      <img src={user.profilePicture && user.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? user.profilePicture : user.avatar} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-3xl font-bold text-gray-500">{(user?.fullName || 'U').charAt(0)}</span>
+                      <span className="text-3xl font-bold text-gray-500">{(user?.fullName || user?.username || 'U').charAt(0).toUpperCase()}</span>
                     )}
                   </div>
                   <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">

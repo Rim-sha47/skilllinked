@@ -138,6 +138,48 @@ exports.createOrUpdateProfile = async (req, res) => {
   }
 };
 
+// @desc    Update user info (name, username, headline)
+// @route   PUT /api/profiles/user-info
+// @access  Private
+exports.updateUserInfo = async (req, res) => {
+  try {
+    const { fullName, username, headline } = req.body;
+    
+    // Build update object
+    const updates = {};
+    if (fullName !== undefined) updates.fullName = fullName;
+    if (headline !== undefined) updates.headline = headline;
+
+    if (username !== undefined) {
+      // Check if username is taken by another user
+      const existingUser = await User.findOne({ username });
+      if (existingUser && existingUser._id.toString() !== req.user.id.toString()) {
+        return res.status(400).json({ message: 'Username is already taken' });
+      }
+      updates.username = username;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Also update Profile model's headline if it exists
+    if (headline !== undefined) {
+      await Profile.findOneAndUpdate({ user: req.user.id }, { $set: { headline } });
+    }
+
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // @desc    Get all profiles
 // @route   GET /api/profiles
 // @access  Public
@@ -272,24 +314,6 @@ exports.addSkill = async (req, res) => {
   }
 };
 
-// @desc    Delete profile skill
-// @route   DELETE /api/profiles/skills/:skill_name
-// @access  Private
-exports.updateAvatar = async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    user.profilePicture = `${baseUrl}/uploads/${req.file.filename}`;
-    
-    await user.save();
-    res.json({ profilePicture: user.profilePicture });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
 
 exports.deleteSkill = async (req, res) => {
   try {
@@ -328,6 +352,48 @@ exports.deleteCertification = async (req, res) => {
     if (cert.user.toString() !== req.user.id) return res.status(401).json({ message: 'User not authorized' });
     await cert.deleteOne();
     res.json({ message: 'Certification removed' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Update user avatar
+// @route   PUT /api/profiles/avatar
+// @access  Private
+exports.updateAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.profilePicture = req.file.path; // Cloudinary URL
+    await user.save();
+
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Remove user avatar
+// @route   DELETE /api/profiles/avatar
+// @access  Private
+exports.removeAvatar = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.profilePicture = '';
+    await user.save();
+
+    res.json(user);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

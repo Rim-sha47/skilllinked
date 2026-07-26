@@ -6,7 +6,7 @@ const Activity = require('../models/Activity');
 // @access  Private
 exports.createPost = async (req, res) => {
   try {
-    const { text, mediaFiles } = req.body;
+    const { text } = req.body;
     let media = [];
     
     // If using multer for multiple files
@@ -25,7 +25,8 @@ exports.createPost = async (req, res) => {
       user: req.user.id,
     });
 
-    const post = await newPost.save();
+    const savedPost = await newPost.save();
+    const post = await Post.findById(savedPost._id).populate('user', 'fullName username profilePicture headline role');
     
     // Notify via socket (if connected users are online)
     // req.io.emit('new_post', post); // Example usage
@@ -41,7 +42,7 @@ exports.createPost = async (req, res) => {
 // @access  Private
 exports.getPosts = async (req, res) => {
   try {
-    const posts = await Post.find().sort({ createdAt: -1 }).populate('user', 'name avatar');
+    const posts = await Post.find().sort({ createdAt: -1 }).populate('user', 'fullName username profilePicture headline role');
     res.json(posts);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -54,7 +55,6 @@ exports.getPosts = async (req, res) => {
 exports.likePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
     }
@@ -65,14 +65,23 @@ exports.likePost = async (req, res) => {
       post.reactions.splice(reactionIndex, 1); // Unlike
     } else {
       post.reactions.unshift({ user: req.user.id, type: 'like' }); // Like
-      // Log Activity
-      const activity = new Activity({
-        user: req.user.id,
-        type: 'like_post',
-        text: `You liked a post.`,
-        relatedId: post._id
-      });
-      await activity.save();
+      
+      // Don't notify if user liked their own post
+      if (post.user.toString() !== req.user.id) {
+        const User = require('../models/User');
+        const sender = await User.findById(req.user.id);
+        const Notification = require('../models/Notification');
+        const notif = await Notification.create({
+          user: post.user,
+          sender: req.user.id,
+          type: 'post_like',
+          content: `${sender.fullName || sender.username} liked your post.`,
+          relatedData: { postId: post._id }
+        });
+        if (req.io) {
+          req.io.to(post.user.toString()).emit('notification', notif);
+        }
+      }
     }
 
     await post.save();
@@ -88,7 +97,6 @@ exports.likePost = async (req, res) => {
 exports.commentOnPost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
-
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
     }
@@ -101,14 +109,21 @@ exports.commentOnPost = async (req, res) => {
     post.comments.unshift(newComment);
     await post.save();
     
-    // Log Activity
-    const activity = new Activity({
-      user: req.user.id,
-      type: 'comment_post',
-      text: `You commented on a post.`,
-      relatedId: post._id
-    });
-    await activity.save();
+    if (post.user.toString() !== req.user.id) {
+      const User = require('../models/User');
+      const sender = await User.findById(req.user.id);
+      const Notification = require('../models/Notification');
+      const notif = await Notification.create({
+        user: post.user,
+        sender: req.user.id,
+        type: 'post_comment',
+        content: `${sender.fullName || sender.username} commented on your post.`,
+        relatedData: { postId: post._id, commentText: req.body.text }
+      });
+      if (req.io) {
+        req.io.to(post.user.toString()).emit('notification', notif);
+      }
+    }
     
     res.status(201).json(post.comments);
   } catch (error) {

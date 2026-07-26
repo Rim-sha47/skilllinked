@@ -9,6 +9,7 @@ const {
   getMe,
   logout
 } = require('../controllers/authController');
+const { googleAuth } = require('../controllers/googleAuthController');
 const { protect } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -20,7 +21,9 @@ router.post('/login/company', loginCompany);
 router.post('/login/admin', loginAdmin);
 router.post('/refresh', refreshToken);
 
-router.get('/logout', logout);
+router.post('/google', googleAuth);
+
+
 router.get('/me', protect, getMe);
 
 module.exports = router;

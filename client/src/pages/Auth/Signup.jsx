@@ -4,7 +4,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { login } from '../../redux/slices/authSlice';
 import api from '../../services/api';
-import { FaEye, FaEyeSlash, FaGoogle, FaGithub, FaLinkedin, FaCheck } from 'react-icons/fa';
+import { FaEye, FaEyeSlash, FaCheck } from 'react-icons/fa';
+import { GoogleLogin } from '@react-oauth/google';
 
 const Signup = () => {
   const dispatch = useDispatch();
@@ -44,15 +45,29 @@ const Signup = () => {
         password: form.password,
       });
 
-      // Store tokens
+      // Redirect to login after successful registration
+      navigate('/auth/login', { state: { message: 'Registration successful! Please log in.' } });
+    } catch (err) {
+      setError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      setIsLoading(true);
+      const { credential } = credentialResponse; // ID token
+      const res = await api.post('/auth/google', { idToken: credential });
+      const data = res; // interceptor unwraps
+      
       localStorage.setItem('token', data.accessToken);
       if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-
+      
       dispatch(login({
         user: {
           _id: data._id,
           fullName: data.fullName,
-          name: data.fullName,
           username: data.username,
           email: data.email,
           role: data.role,
@@ -60,13 +75,18 @@ const Signup = () => {
         },
         token: data.accessToken,
       }));
-
+      
       navigate('/app/dashboard');
     } catch (err) {
-      setError(err.message || 'Registration failed. Please try again.');
+      console.error('Google signup error:', err);
+      setError('Google sign-up failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoogleError = () => {
+    setError('Google sign-up was unsuccessful. Please try again.');
   };
 
   return (
@@ -106,6 +126,17 @@ const Signup = () => {
             <div className="flex-grow border-t border-gray-200 dark:border-gray-700" />
             <span className="mx-4 text-xs font-bold text-gray-400 uppercase tracking-widest">sign up below</span>
             <div className="flex-grow border-t border-gray-200 dark:border-gray-700" />
+          </div>
+          
+          <div className="flex justify-center mb-6">
+            <GoogleLogin 
+              onSuccess={handleGoogleSuccess} 
+              onError={handleGoogleError} 
+              text="continue_with"
+              theme="outline"
+              size="large"
+              prompt="select_account"
+            />
           </div>
 
           <form className="space-y-4" onSubmit={handleSignup}>

@@ -138,5 +138,8 @@ router.delete('/certifications/:cert_id', protect, deleteCertification);
 
 // Avatar route
 router.put('/avatar', protect, upload.single('file'), updateAvatar);
+router.delete('/avatar', protect, require('../controllers/profileController').removeAvatar);
+// User Info route
+router.put('/user-info', protect, require('../controllers/profileController').updateUserInfo);
 
 module.exports = router;

@@ -24,6 +24,13 @@ export const toggleLikePost = createAsyncThunk('feed/toggleLike', async (postId,
   } catch (err) { return rejectWithValue(err.message); }
 });
 
+export const savePost = createAsyncThunk('feed/savePost', async (postId, { rejectWithValue }) => {
+  try {
+    const response = await api.put(`/posts/save/${postId}`);
+    return response.savedPosts; // Returns array of saved post IDs
+  } catch (err) { return rejectWithValue(err.message); }
+});
+
 export const commentOnPost = createAsyncThunk('feed/comment', async ({ postId, text }, { rejectWithValue }) => {
   try {
     const comments = await api.post(`/posts/comment/${postId}`, { text });
@@ -62,7 +69,7 @@ const feedSlice = createSlice({
 
     builder.addCase(toggleLikePost.fulfilled, (state, action) => {
       const post = state.posts.find(p => p._id === action.payload.postId);
-      if (post) post.likes = action.payload.likes;
+      if (post) post.reactions = action.payload.likes;
     });
 
     builder.addCase(commentOnPost.fulfilled, (state, action) => {

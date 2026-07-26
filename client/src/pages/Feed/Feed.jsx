@@ -4,7 +4,8 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { FaImage, FaVideo, FaFileAlt, FaThumbsUp, FaComment, FaShare, FaPaperPlane, FaEllipsisH, FaBookmark, FaDownload, FaPlus, FaTimes } from 'react-icons/fa';
 import { motion } from 'framer-motion';
-import { createPost, fetchPosts } from '../../redux/slices/feedSlice';
+import { createPost, fetchPosts, toggleLikePost, savePost } from '../../redux/slices/feedSlice';
+import { updateUser } from '../../redux/slices/authSlice';
 import { RiMergeCellsHorizontal } from 'react-icons/ri';
 
 const Feed = () => {
@@ -42,7 +43,7 @@ const Feed = () => {
     const formData = new FormData();
     formData.append('text', postText);
     if (selectedFile) {
-      formData.append('mediaFiles', selectedFile);
+      formData.append('files', selectedFile);
     }
 
     try {
@@ -54,15 +55,17 @@ const Feed = () => {
     }
   };
 
-  const [likedPosts, setLikedPosts] = useState({});
-  const [savedPosts, setSavedPosts] = useState({});
-
   const toggleLike = (id) => {
-    setLikedPosts(prev => ({ ...prev, [id]: !prev[id] }));
+    dispatch(toggleLikePost(id));
   };
 
-  const toggleSave = (id) => {
-    setSavedPosts(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleSave = async (id) => {
+    try {
+      const savedPosts = await dispatch(savePost(id)).unwrap();
+      dispatch(updateUser({ savedPosts }));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleDownload = (mediaUrl) => {
@@ -133,8 +136,8 @@ const Feed = () => {
         <div className="flex space-x-4 relative z-10">
           <div className="flex-shrink-0 mt-1">
             <div className="w-12 h-12 rounded-full border-2 border-primary/20 bg-gray-200 dark:bg-gray-700 overflow-hidden">
-              {user?.profilePicture && !user.profilePicture.includes('anonymous') ? (
-                <img src={user.profilePicture} alt="User" className="w-full h-full object-cover" />
+              {(user?.profilePicture && user.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') || (user?.avatar && user.avatar !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') ? (
+                <img src={user.profilePicture && user.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? user.profilePicture : user.avatar} alt="User" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold">
                   {user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'U'}
@@ -214,17 +217,20 @@ const Feed = () => {
       {/* Posts List */}
       <div className="space-y-8">
         {[...(fetchedPosts?.length ? fetchedPosts : posts)].map((post) => {
-          const isLiked = likedPosts[post._id || post.id];
-          const authorName = post.user?.name || post.author || 'User';
+          const isRealPost = !!post._id;
+          const postId = post._id || post.id;
+          const isLiked = isRealPost ? post.reactions?.some(r => r.user === user?._id) : false;
+          const isSaved = isRealPost ? user?.savedPosts?.includes(postId) : false;
+          const authorName = post.user?.fullName || post.user?.name || post.author || 'User';
           const authorAvatar = post.user?.profilePicture;
-          const authorRole = post.user?.role || post.role || 'Member';
+          const authorRole = post.user?.headline || post.user?.role || post.role || 'Member';
           const postTime = post.createdAt ? new Date(post.createdAt).toLocaleDateString() : post.time;
-          const likesCount = (post.reactions?.length || post.likes || 0) + (isLiked ? 1 : 0);
-          const commentsCount = post.comments?.length || post.comments || 0;
+          const likesCount = isRealPost ? (post.reactions?.length || 0) : (post.likes || 0);
+          const commentsCount = isRealPost ? (post.comments?.length || 0) : (post.comments || 0);
           
           return (
             <motion.div 
-              key={post._id || post.id}
+              key={postId}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-50px" }}
@@ -235,7 +241,7 @@ const Feed = () => {
                 <div className="flex items-start justify-between p-5">
                   <div className="flex space-x-3">
                     <div className="flex-shrink-0">
-                      {authorAvatar && !authorAvatar.includes('anonymous') ? (
+                      {(authorAvatar && authorAvatar !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg') ? (
                         <img src={authorAvatar} alt="Avatar" className="w-12 h-12 rounded-full object-cover shadow-sm border border-white/20" />
                       ) : (
                         <div className={`w-12 h-12 rounded-full ${post.avatar || 'bg-blue-500'} text-white flex items-center justify-center font-bold text-lg shadow-sm border border-white/20`}>
@@ -308,7 +314,7 @@ const Feed = () => {
                 <div className="px-3 py-2 flex flex-wrap justify-between sm:justify-start sm:space-x-2 bg-gray-50/50 dark:bg-dark-bg/30">
                   <motion.button 
                     whileTap={{ scale: 0.9 }}
-                    onClick={() => toggleLike(post.id)}
+                    onClick={() => toggleLike(postId)}
                     className={`flex-1 sm:flex-none flex items-center justify-center space-x-2 px-3 py-3 rounded-xl font-bold text-sm transition-all ${
                       isLiked ? 'text-primary bg-primary/10' : 'text-text-secondary hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-dark-card hover:text-text-primary dark:hover:text-white'
                     }`}
@@ -328,9 +334,9 @@ const Feed = () => {
                   <div className="flex-1 sm:flex-none flex justify-end space-x-2 ml-auto">
                     <motion.button 
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => toggleSave(post.id)}
+                      onClick={() => toggleSave(postId)}
                       className={`flex-none flex items-center justify-center space-x-2 px-3 py-3 rounded-xl font-bold text-sm transition-all ${
-                        savedPosts[post.id] ? 'text-yellow-500 bg-yellow-500/10' : 'text-text-secondary hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-dark-card hover:text-text-primary dark:hover:text-white'
+                        isSaved ? 'text-yellow-500 bg-yellow-500/10' : 'text-text-secondary hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-dark-card hover:text-text-primary dark:hover:text-white'
                       }`}
                     >
                       <FaBookmark className="text-lg" />

@@ -33,13 +33,17 @@ app.use((req, res, next) => {
 });
 
 // Middleware
+const path = require('path');
 app.use(express.json());
-app.use(cors());
-app.use(helmet());
+app.use(cors({ origin: '*' }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  contentSecurityPolicy: false,
+}));
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
-const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 const rateLimit = require('express-rate-limit');

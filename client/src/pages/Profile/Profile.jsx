@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
@@ -7,25 +8,34 @@ import { Modal } from '../../components/common/Modal';
 import { FaMapMarkerAlt, FaLink, FaEdit, FaPlus, FaGraduationCap, FaBriefcase, FaCertificate, FaCode, FaExternalLinkAlt, FaTrash, FaCheckCircle } from 'react-icons/fa';
 import { 
   fetchMyProfile, 
+  fetchProfileById,
   updateBasicInfo, 
   addExperience, removeExperience,
   addEducation, removeEducation,
   addSkill, removeSkill,
   addCertification, removeCertification,
-  updateAvatar 
+  updateAvatar,
+  removeAvatar
 } from '../../redux/slices/profileSlice';
 import { updateUser } from '../../redux/slices/authSlice';
+import { followUser, unfollowUser } from '../../redux/slices/connectionSlice';
 
 import BasicInfoForm from '../../components/profile/BasicInfoForm';
 import ExperienceForm from '../../components/profile/ExperienceForm';
 import EducationForm from '../../components/profile/EducationForm';
 import SkillForm from '../../components/profile/SkillForm';
 import CertificationForm from '../../components/profile/CertificationForm';
+import ProfilePicForm from '../../components/profile/ProfilePicForm';
 
 const Profile = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { user } = useSelector(state => state.auth);
+  const { user: authUser } = useSelector(state => state.auth);
   const { data: profile, isLoading } = useSelector(state => state.profile);
+  
+  const isMe = !id || id === authUser?._id;
+  const displayUser = isMe ? authUser : profile?.user;
 
   // Modal states
   const [modals, setModals] = useState({
@@ -39,6 +49,7 @@ const Profile = () => {
   
   // For editing existing entries
   const [editItem, setEditItem] = useState(null);
+  const [isAvatarDropdownOpen, setIsAvatarDropdownOpen] = useState(false);
 
   const openModal = (type, item = null) => {
     // For date inputs, we need to convert ISO strings to YYYY-MM-DD
@@ -61,8 +72,25 @@ const Profile = () => {
   };
 
   useEffect(() => {
-    dispatch(fetchMyProfile());
-  }, [dispatch]);
+    if (id) {
+      dispatch(fetchProfileById(id));
+    } else {
+      dispatch(fetchMyProfile());
+    }
+  }, [dispatch, id]);
+
+  const handleFollowToggle = () => {
+    if (!profile?.user?._id) return;
+    const isFollowing = authUser?.following?.includes(profile.user._id);
+    if (isFollowing) {
+      dispatch(unfollowUser(profile.user._id));
+      // Optimistically update local state or re-fetch profile to update followers count
+      dispatch(fetchProfileById(id));
+    } else {
+      dispatch(followUser(profile.user._id));
+      dispatch(fetchProfileById(id));
+    }
+  };
 
   // Submit Handlers
   const handleBasicInfoSubmit = async (data) => {
@@ -103,11 +131,24 @@ const Profile = () => {
   const handleProfilePicSubmit = async (formData) => {
     try {
       const res = await dispatch(updateAvatar(formData)).unwrap();
-      if (res && res.profilePicture) {
+      if (res && res.profilePicture !== undefined) {
         dispatch(updateUser({ profilePicture: res.profilePicture, avatar: res.profilePicture }));
+        // Re-fetch full profile so profile page image refreshes too
+        dispatch(fetchMyProfile());
       }
       closeModal('profilePic');
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('Avatar upload error:', err); }
+  };
+
+  const handleRemoveProfilePic = async () => {
+    try {
+      const res = await dispatch(removeAvatar()).unwrap();
+      if (res && res.profilePicture !== undefined) {
+        dispatch(updateUser({ profilePicture: res.profilePicture, avatar: res.profilePicture }));
+        dispatch(fetchMyProfile());
+      }
+      setIsAvatarDropdownOpen(false);
+    } catch (err) { console.error('Avatar remove error:', err); }
   };
 
   if (isLoading && !profile) {
@@ -119,7 +160,7 @@ const Profile = () => {
   }
 
   // Fallback for user initials
-  const initials = user?.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U';
+  const initials = displayUser?.fullName ? displayUser.fullName.split(' ').map(n => n[0]).join('').toUpperCase() : displayUser?.username?.[0]?.toUpperCase() || 'U';
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
@@ -156,40 +197,83 @@ const Profile = () => {
         <div className="flex flex-col md:flex-row items-start md:items-center py-8 px-4 md:px-12 border-b border-gray-200 dark:border-gray-800">
           
           {/* Avatar (Left) */}
-          <div className="flex-shrink-0 mr-8 md:mr-16 mb-6 md:mb-0 relative group cursor-pointer" onClick={() => openModal('profilePic')}>
-            <div className="w-24 h-24 md:w-36 md:h-36 rounded-full border border-gray-300 dark:border-gray-700 p-1">
+          <div className="flex-shrink-0 mr-8 md:mr-16 mb-6 md:mb-0 relative group">
+            <div 
+              className={`w-24 h-24 md:w-36 md:h-36 rounded-full border border-gray-300 dark:border-gray-700 p-1 ${isMe ? 'cursor-pointer' : ''}`} 
+              onClick={() => isMe && setIsAvatarDropdownOpen(!isAvatarDropdownOpen)}
+            >
               <div className="w-full h-full rounded-full overflow-hidden bg-gray-200 dark:bg-gray-800 flex items-center justify-center text-4xl font-bold text-gray-500">
-                {user?.profilePicture || user?.avatar ? <img src={user.profilePicture || user.avatar} alt="Profile" className="w-full h-full object-cover" /> : initials}
+                {displayUser?.profilePicture && displayUser.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? (
+                  <img src={displayUser.profilePicture} alt="Profile" className="w-full h-full object-cover" />
+                ) : displayUser?.avatar && displayUser.avatar !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? (
+                  <img src={displayUser.avatar} alt="Profile" className="w-full h-full object-cover" />
+                ) : initials}
               </div>
             </div>
-            <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity m-1">
-               <FaEdit className="text-white text-2xl" />
-            </div>
+            {isMe && (
+              <div 
+                className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity m-1 cursor-pointer pointer-events-auto"
+                onClick={() => setIsAvatarDropdownOpen(!isAvatarDropdownOpen)}
+              >
+                 <FaEdit className="text-white text-2xl" />
+              </div>
+            )}
+            {isMe && isAvatarDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-xl z-50 overflow-hidden border border-gray-200 dark:border-gray-700">
+                <button 
+                  onClick={() => { setIsAvatarDropdownOpen(false); openModal('profilePic'); }} 
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-gray-700 dark:text-gray-200"
+                >
+                  Upload New Photo
+                </button>
+                <button 
+                  onClick={() => { setIsAvatarDropdownOpen(false); openModal('profilePic'); }} 
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-gray-700 dark:text-gray-200"
+                >
+                  Change Photo
+                </button>
+                <button 
+                  onClick={handleRemoveProfilePic} 
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-red-600 dark:text-red-400 font-medium"
+                >
+                  Remove Photo
+                </button>
+              </div>
+            )}
           </div>
           
           {/* Info and Stats (Right) */}
           <div className="flex-1 w-full">
             <div className="flex flex-col md:flex-row md:items-center gap-4 mb-5">
               <h1 className="text-xl md:text-2xl font-semibold text-text-primary dark:text-white">
-                {user?.username || user?.name || 'username'}
+                {displayUser?.fullName || displayUser?.username || 'Member'}
               </h1>
               <div className="flex gap-2">
-                <Button variant="outline" className="font-semibold px-4 py-1.5 h-auto text-sm rounded-lg" onClick={() => openModal('basicInfo')}>Edit Profile</Button>
-                <Button className="font-semibold px-4 py-1.5 h-auto text-sm rounded-lg">Follow</Button>
-                <Button variant="outline" className="font-semibold px-4 py-1.5 h-auto text-sm rounded-lg">Contact</Button>
+                {isMe ? (
+                  <Button variant="outline" className="font-semibold px-4 py-1.5 h-auto text-sm rounded-lg" onClick={() => openModal('basicInfo')}>Edit Profile</Button>
+                ) : (
+                  <>
+                    <Button 
+                      className="font-semibold px-4 py-1.5 h-auto text-sm rounded-lg"
+                      onClick={handleFollowToggle}
+                    >
+                      {authUser?.following?.includes(displayUser?._id) ? 'Following' : 'Follow'}
+                    </Button>
+                    <Button variant="outline" className="font-semibold px-4 py-1.5 h-auto text-sm rounded-lg">Message</Button>
+                  </>
+                )}
               </div>
             </div>
             
             <div className="flex gap-6 mb-5 text-sm md:text-base">
-              <div className="cursor-pointer group"><strong className="text-text-primary dark:text-white">12</strong> <span className="text-text-secondary dark:text-gray-400">posts</span></div>
-              <div className="cursor-pointer group"><strong className="text-text-primary dark:text-white">{user?.followers?.length || 0}</strong> <span className="text-text-secondary dark:text-gray-400">followers</span></div>
-              <div className="cursor-pointer group"><strong className="text-text-primary dark:text-white">{user?.following?.length || 0}</strong> <span className="text-text-secondary dark:text-gray-400">following</span></div>
+              <div className="cursor-pointer group"><strong className="text-text-primary dark:text-white">0</strong> <span className="text-text-secondary dark:text-gray-400">posts</span></div>
+              <div className="cursor-pointer group"><strong className="text-text-primary dark:text-white">{profile?.followersCount || displayUser?.followers?.length || 0}</strong> <span className="text-text-secondary dark:text-gray-400">followers</span></div>
+              <div className="cursor-pointer group"><strong className="text-text-primary dark:text-white">{profile?.followingCount || displayUser?.following?.length || 0}</strong> <span className="text-text-secondary dark:text-gray-400">following</span></div>
             </div>
             
             <div className="text-sm">
-              <p className="font-bold text-text-primary dark:text-white">{user?.name}</p>
-              <p className="text-text-secondary dark:text-gray-400 mt-0.5">{profile?.headline}</p>
-              <p className="text-text-primary dark:text-white mt-1 whitespace-pre-line">{profile?.bio || 'Add a bio to your profile.'}</p>
+              <p className="text-text-secondary dark:text-gray-400 mt-0.5 font-medium">{profile?.headline || displayUser?.headline}</p>
+              <p className="text-text-primary dark:text-gray-300 mt-2 whitespace-pre-line leading-relaxed">{profile?.bio || (isMe ? 'Add a bio to your profile.' : '')}</p>
               {profile?.website && (
                 <a href={profile.website} target="_blank" rel="noreferrer" className="text-blue-900 dark:text-blue-300 font-bold flex items-center mt-1 hover:underline">
                   <FaLink className="mr-1.5" size={12}/> {profile.website}
@@ -232,10 +316,10 @@ const Profile = () => {
             <Card className="hover:border-primary/20 transition-colors border-2 border-transparent">
               <div className="flex justify-between items-center mb-5">
                 <h2 className="text-2xl font-bold text-text-primary dark:text-white">About</h2>
-                <button onClick={() => openModal('basicInfo')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaEdit /></button>
+                {isMe && <button onClick={() => openModal('basicInfo')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaEdit /></button>}
               </div>
               <p className="text-base text-text-secondary dark:text-gray-300 whitespace-pre-line leading-relaxed font-medium">
-                {profile?.bio || 'Write something about yourself...'}
+                {profile?.bio || (isMe ? 'Write something about yourself...' : 'No bio provided.')}
               </p>
             </Card>
           </motion.div>
@@ -245,9 +329,11 @@ const Profile = () => {
             <Card className="hover:border-primary/20 transition-colors border-2 border-transparent">
               <div className="flex justify-between items-center mb-8">
                 <h2 className="text-2xl font-bold text-text-primary dark:text-white">Experience</h2>
-                <div className="flex space-x-2">
-                  <button onClick={() => openModal('experience')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>
-                </div>
+                {isMe && (
+                  <div className="flex space-x-2">
+                    <button onClick={() => openModal('experience')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>
+                  </div>
+                )}
               </div>
               
               <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-6 space-y-10 pb-4">
@@ -266,10 +352,12 @@ const Profile = () => {
                               {new Date(exp.from).toLocaleDateString()} - {exp.current ? 'Present' : new Date(exp.to).toLocaleDateString()}
                             </p>
                           </div>
-                          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => openModal('experience', exp)} className="text-gray-400 hover:text-primary p-2 rounded-full"><FaEdit /></button>
-                            <button onClick={() => dispatch(removeExperience(exp._id))} className="text-gray-400 hover:text-red-500 p-2 rounded-full"><FaTrash /></button>
-                          </div>
+                          {isMe && (
+                            <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => openModal('experience', exp)} className="text-gray-400 hover:text-primary p-2 rounded-full"><FaEdit /></button>
+                              <button onClick={() => dispatch(removeExperience(exp._id))} className="text-gray-400 hover:text-red-500 p-2 rounded-full"><FaTrash /></button>
+                            </div>
+                          )}
                         </div>
                         <p className="text-sm text-text-secondary dark:text-gray-400 mt-4 leading-relaxed font-medium">
                           {exp.description}
@@ -293,9 +381,11 @@ const Profile = () => {
             <Card className="hover:border-primary/20 transition-colors border-2 border-transparent">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-text-primary dark:text-white">Top Skills</h2>
-                <div className="flex space-x-2">
-                  <button onClick={() => openModal('skill')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>
-                </div>
+                {isMe && (
+                  <div className="flex space-x-2">
+                    <button onClick={() => openModal('skill')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap gap-3">
                 {profile?.skills && profile.skills.length > 0 ? (
@@ -317,7 +407,7 @@ const Profile = () => {
             <Card className="hover:border-primary/20 transition-colors border-2 border-transparent">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-text-primary dark:text-white">Education</h2>
-                <button onClick={() => openModal('education')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>
+                {isMe && <button onClick={() => openModal('education')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>}
               </div>
               <div className="space-y-4">
                 {profile?.education && profile.education.length > 0 ? (
@@ -329,10 +419,12 @@ const Profile = () => {
                       <div className="flex-1">
                         <div className="flex justify-between">
                           <h3 className="text-base font-bold text-text-primary dark:text-white">{edu.school}</h3>
-                          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => openModal('education', edu)} className="text-gray-400 hover:text-primary px-1"><FaEdit size={12}/></button>
-                            <button onClick={() => dispatch(removeEducation(edu._id))} className="text-gray-400 hover:text-red-500 px-1"><FaTrash size={12}/></button>
-                          </div>
+                          {isMe && (
+                            <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => openModal('education', edu)} className="text-gray-400 hover:text-primary px-1"><FaEdit size={12}/></button>
+                              <button onClick={() => dispatch(removeEducation(edu._id))} className="text-gray-400 hover:text-red-500 px-1"><FaTrash size={12}/></button>
+                            </div>
+                          )}
                         </div>
                         <p className="text-sm font-semibold text-text-secondary dark:text-gray-400 mt-1">{edu.degree} in {edu.fieldOfStudy}</p>
                         <p className="text-xs font-medium text-gray-500 mt-1">
@@ -353,7 +445,7 @@ const Profile = () => {
             <Card className="hover:border-primary/20 transition-colors border-2 border-transparent">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-text-primary dark:text-white">Licenses & Certifications</h2>
-                <button onClick={() => openModal('certification')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>
+                {isMe && <button onClick={() => openModal('certification')} className="text-gray-400 hover:text-primary transition-colors p-2 rounded-full hover:bg-primary/10"><FaPlus /></button>}
               </div>
               <div className="space-y-4">
                 {profile?.certifications && profile.certifications.length > 0 ? (
@@ -365,10 +457,12 @@ const Profile = () => {
                       <div className="flex-1">
                         <div className="flex justify-between">
                           <h3 className="text-base font-bold text-text-primary dark:text-white">{cert.name}</h3>
-                          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => openModal('certification', cert)} className="text-gray-400 hover:text-primary px-1"><FaEdit size={12}/></button>
-                            <button onClick={() => dispatch(removeCertification(cert._id))} className="text-gray-400 hover:text-red-500 px-1"><FaTrash size={12}/></button>
-                          </div>
+                          {isMe && (
+                            <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => openModal('certification', cert)} className="text-gray-400 hover:text-primary px-1"><FaEdit size={12}/></button>
+                              <button onClick={() => dispatch(removeCertification(cert._id))} className="text-gray-400 hover:text-red-500 px-1"><FaTrash size={12}/></button>
+                            </div>
+                          )}
                         </div>
                         <p className="text-sm font-semibold text-text-secondary dark:text-gray-400 mt-1">{cert.issuingOrganization}</p>
                         <p className="text-xs font-medium text-gray-500 mt-1 flex items-center">

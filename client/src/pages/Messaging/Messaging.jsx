@@ -11,10 +11,7 @@ import {
   fetchChats, fetchMessages, sendMessage, deleteMessage, sendMedia,
   setActiveChat, setReplyingTo, clearReplyingTo, receiveMessage, removeMessage
 } from '../../redux/slices/messagingSlice';
-import io from 'socket.io-client';
-
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
-let socket;
+import { socket } from '../../services/socket';
 
 // ─── Helper: time display ────────────────────────────────────
 const formatTime = (dateStr) => {
@@ -35,8 +32,10 @@ const formatDate = (dateStr) => {
 };
 
 const getUserName = (user) => user?.fullName || user?.name || user?.username || 'User';
-const getUserAvatar = (user) => user?.profilePicture || user?.avatar || null;
-
+const getUserAvatar = (user) => {
+  const pic = user?.profilePicture || user?.avatar || null;
+  return pic === 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? null : pic;
+};
 // ─── Avatar component ────────────────────────────────────────
 const Avatar = ({ user, size = 'md', online }) => {
   const sizeClasses = { sm: 'w-8 h-8 text-xs', md: 'w-12 h-12 text-lg', lg: 'w-14 h-14 text-xl' };
@@ -207,26 +206,21 @@ const Messaging = () => {
 
   // ─── Socket setup ────────────────────────────────────────
   useEffect(() => {
-    if (!user?._id) return;
-    socket = io(SOCKET_URL);
-    socket.emit('setup', user);
+    if (!socket.connected) return;
 
-    socket.on('connected', () => console.log('Socket connected for messaging'));
     socket.on('online users', (users) => setOnlineUsers(users));
     socket.on('user online', ({ userId, online }) => {
       setOnlineUsers(prev => online ? [...new Set([...prev, userId])] : prev.filter(id => id !== userId));
     });
-    socket.on('message received', (msg) => {
-      dispatch(receiveMessage(msg));
-    });
+    
+    // Note: 'message received' and 'message deleted' are already handled globally in AppInitializer
+    // but we need typing indicators and WebRTC here
+
     socket.on('typing', ({ room }) => {
       if (room === activeChatId) setIsTyping(true);
     });
     socket.on('stop typing', ({ room }) => {
       if (room === activeChatId) setIsTyping(false);
-    });
-    socket.on('message deleted', ({ messageId, chatId }) => {
-      dispatch(removeMessage({ messageId, chatId }));
     });
 
     // Calling events
@@ -244,8 +238,17 @@ const Messaging = () => {
       setCallState({ active: false, receiving: false, caller: null, type: null, accepted: false });
     });
 
-    return () => { socket.disconnect(); };
-  }, [user?._id]);
+    return () => {
+      socket.off('online users');
+      socket.off('user online');
+      socket.off('typing');
+      socket.off('stop typing');
+      socket.off('call-user');
+      socket.off('call-accepted');
+      socket.off('call-rejected');
+      socket.off('call-ended');
+    };
+  }, [activeChatId]);
 
   // ─── Load chats on mount ─────────────────────────────────
   useEffect(() => {

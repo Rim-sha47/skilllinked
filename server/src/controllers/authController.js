@@ -9,14 +9,16 @@ const generateTokens = (id, role) => {
   const refreshToken = jwt.sign({ id, role }, process.env.JWT_REFRESH_SECRET || 'refresh_secret', { expiresIn: '7d' });
   return { accessToken, refreshToken };
 };
+exports.generateTokens = generateTokens;
 
 // @desc    Register user
 // @route   POST /api/auth/register/user
 // @access  Public
 exports.registerUser = async (req, res) => {
   try {
+    console.log('RegisterUser request body:', req.body);
     const { fullName, username, email, phoneNumber, password } = req.body;
-
+    // existing logic follows
     const userExists = await User.findOne({ $or: [{ email }, { username }, { phoneNumber }] });
     if (userExists) {
       return res.status(400).json({ message: 'User with email, username or phone number already exists' });
@@ -39,6 +41,7 @@ exports.registerUser = async (req, res) => {
       _id: user._id, fullName: user.fullName, username: user.username, email: user.email, role: user.role, accessToken, refreshToken
     });
   } catch (error) {
+    console.error('Error in registerUser:', error);
     res.status(500).json({ message: error.message });
   }
 };

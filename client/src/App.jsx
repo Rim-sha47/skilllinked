@@ -4,11 +4,17 @@ import { Provider, useDispatch, useSelector } from 'react-redux';
 import store from './redux/store';
 import { AppRoutes } from './routes';
 import { setTheme } from './redux/slices/themeSlice';
+import { Toaster } from 'react-hot-toast';
 
-// A wrapper component to handle initial theme logic that requires the Redux store
+import { socket, connectSocket, disconnectSocket } from './services/socket';
+import { addRealtimeNotification } from './redux/slices/notificationSlice';
+import { receiveMessage, removeMessage } from './redux/slices/messagingSlice';
+
+// A wrapper component to handle initial theme logic and sockets
 const AppInitializer = ({ children }) => {
   const dispatch = useDispatch();
   const { mode } = useSelector((state) => state.theme);
+  const { user, token } = useSelector((state) => state.auth);
 
   useEffect(() => {
     // Sync initial theme state with document class
@@ -18,6 +24,31 @@ const AppInitializer = ({ children }) => {
       document.documentElement.classList.remove('dark');
     }
   }, [mode]);
+
+  useEffect(() => {
+    if (user && token) {
+      connectSocket(user);
+
+      socket.on('notification', (newNotification) => {
+        dispatch(addRealtimeNotification(newNotification));
+      });
+
+      socket.on('message received', (newMessage) => {
+        dispatch(receiveMessage(newMessage));
+      });
+
+      socket.on('message deleted', (data) => {
+        dispatch(removeMessage(data));
+      });
+    }
+
+    return () => {
+      socket.off('notification');
+      socket.off('message received');
+      socket.off('message deleted');
+      disconnectSocket();
+    };
+  }, [user, token, dispatch]);
 
   return children;
 };
@@ -46,12 +77,14 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+
 function App() {
   return (
     <ErrorBoundary>
       <Provider store={store}>
         <AppInitializer>
           <BrowserRouter>
+            <Toaster position="top-right" />
             <AppRoutes />
           </BrowserRouter>
         </AppInitializer>

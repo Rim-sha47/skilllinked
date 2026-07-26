@@ -42,6 +42,20 @@ export const removeConnection = createAsyncThunk('connections/remove', async (co
   } catch (err) { return rejectWithValue(err.message); }
 });
 
+export const followUser = createAsyncThunk('connections/followUser', async (userId, { rejectWithValue }) => {
+  try {
+    const res = await api.post(`/connections/follow/${userId}`);
+    return { userId, followersCount: res.followersCount };
+  } catch (err) { return rejectWithValue(err.message); }
+});
+
+export const unfollowUser = createAsyncThunk('connections/unfollowUser', async (userId, { rejectWithValue }) => {
+  try {
+    const res = await api.delete(`/connections/follow/${userId}`);
+    return { userId, followersCount: res.followersCount };
+  } catch (err) { return rejectWithValue(err.message); }
+});
+
 // ─── Slice ────────────────────────────────────────────────────────────────────
 
 const initialState = {

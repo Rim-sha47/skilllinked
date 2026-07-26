@@ -75,6 +75,7 @@ export const AppRoutes = () => (
           <Route path="/app/notifications" element={<Notifications />} />
           <Route path="/app/messaging"    element={<Messaging />} />
           <Route path="/app/profile"      element={<Profile />} />
+          <Route path="/app/profile/:id"  element={<Profile />} />
           <Route path="/app/networking"   element={<Networking />} />
           <Route path="/app/companies"    element={<Companies />} />
           <Route path="/app/search"       element={<Search />} />
