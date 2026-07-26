@@ -178,7 +178,7 @@ Ensure you have the following installed:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/rimsha7221/skilllinked.git
+   git clone https://github.com/Rim-sha47/skilllinked.git
    cd skilllinked
    ```
 
@@ -304,7 +304,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
   <h3>👩‍💻 Developed with ❤️ by Rimsha</h3>
   <p>Full-Stack Developer | Innovator</p>
   
-  <a href="https://github.com/rimsha7221">
-    <img src="https://img.shields.io/badge/GitHub-rimsha7221-181717?style=flat-square&logo=github" alt="GitHub Profile" />
+  <a href="https://github.com/Rim-sha47">
+    <img src="https://img.shields.io/badge/GitHub-Rim--sha47-181717?style=flat-square&logo=github" alt="GitHub Profile" />
   </a>
 </div>
