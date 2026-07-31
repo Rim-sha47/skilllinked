@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../services/api';
+import { updateUser } from './authSlice';
 
 // ─── Async Thunks ────────────────────────────────────────────────────────────
 
@@ -28,9 +29,10 @@ export const sendConnectionRequest = createAsyncThunk('connections/sendRequest',
   } catch (err) { return rejectWithValue(err.message); }
 });
 
-export const acceptConnectionRequest = createAsyncThunk('connections/acceptRequest', async (connectionId, { rejectWithValue }) => {
+export const acceptConnectionRequest = createAsyncThunk('connections/acceptRequest', async (connectionId, { dispatch, rejectWithValue }) => {
   try {
     await api.put(`/connections/accept/${connectionId}`);
+    dispatch(fetchConnections()); // Instantly update My Connections list
     return connectionId;
   } catch (err) { return rejectWithValue(err.message); }
 });
@@ -42,16 +44,35 @@ export const removeConnection = createAsyncThunk('connections/remove', async (co
   } catch (err) { return rejectWithValue(err.message); }
 });
 
-export const followUser = createAsyncThunk('connections/followUser', async (userId, { rejectWithValue }) => {
+export const followUser = createAsyncThunk('connections/followUser', async (userId, { dispatch, rejectWithValue, getState }) => {
   try {
     const res = await api.post(`/connections/follow/${userId}`);
+    const currentUser = getState().auth.user;
+    if (currentUser && !currentUser.following?.includes(userId)) {
+      dispatch(updateUser({ following: [...(currentUser.following || []), userId] }));
+    }
     return { userId, followersCount: res.followersCount };
   } catch (err) { return rejectWithValue(err.message); }
 });
 
-export const unfollowUser = createAsyncThunk('connections/unfollowUser', async (userId, { rejectWithValue }) => {
+export const unfollowUser = createAsyncThunk('connections/unfollowUser', async (userId, { dispatch, rejectWithValue, getState }) => {
   try {
     const res = await api.delete(`/connections/follow/${userId}`);
+    const currentUser = getState().auth.user;
+    if (currentUser && currentUser.following?.includes(userId)) {
+      dispatch(updateUser({ following: currentUser.following.filter(id => id !== userId) }));
+    }
+    return { userId, followersCount: res.followersCount };
+  } catch (err) { return rejectWithValue(err.message); }
+});
+
+export const removeFollower = createAsyncThunk('connections/removeFollower', async (userId, { dispatch, rejectWithValue, getState }) => {
+  try {
+    const res = await api.delete(`/connections/follower/${userId}`);
+    const currentUser = getState().auth.user;
+    if (currentUser && currentUser.followers?.includes(userId)) {
+      dispatch(updateUser({ followers: currentUser.followers.filter(id => id !== userId) }));
+    }
     return { userId, followersCount: res.followersCount };
   } catch (err) { return rejectWithValue(err.message); }
 });
@@ -92,9 +113,12 @@ const connectionSlice = createSlice({
       state.suggestions = action.payload;
     });
 
-    // ── sendConnectionRequest ── (remove from suggestions optimistically)
+    // ── sendConnectionRequest ── (mark as pending — the other user must accept)
     builder.addCase(sendConnectionRequest.fulfilled, (state, action) => {
-      state.suggestions = state.suggestions.filter(u => u._id !== action.payload);
+      const suggestion = state.suggestions.find(u => u._id === action.payload);
+      if (suggestion) {
+        suggestion.connectionStatus = 'pending';
+      }
     });
 
     // ── acceptConnectionRequest ── (remove from pendingRequests)

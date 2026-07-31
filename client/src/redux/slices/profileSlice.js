@@ -27,6 +27,18 @@ export const fetchProfileById = createAsyncThunk(
   }
 );
 
+export const recordProfileView = createAsyncThunk(
+  'profile/recordProfileView',
+  async (userId, { rejectWithValue }) => {
+    try {
+      const response = await api.post(`/profiles/user/${userId}/view`);
+      return response;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 export const updateBasicInfo = createAsyncThunk(
   'profile/updateBasicInfo',
   async (profileData, { rejectWithValue }) => {
@@ -46,7 +58,7 @@ export const updateAvatar = createAsyncThunk(
     try {
       const token = localStorage.getItem('token');
       console.log('Uploading avatar, token:', token);
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/profiles/avatar`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/profiles/avatar`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -78,7 +90,54 @@ export const removeAvatar = createAsyncThunk(
   async (_, { dispatch, rejectWithValue }) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/profiles/avatar`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/profiles/avatar`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Removal failed');
+      }
+      const data = await response.json();
+      dispatch(updateUser(data));
+      return data;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const updateCoverPhoto = createAsyncThunk(
+  'profile/updateCoverPhoto',
+  async (formData, { dispatch, rejectWithValue }) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/profiles/cover-photo`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+      const data = await response.json();
+      dispatch(updateUser(data));
+      return data;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const removeCoverPhoto = createAsyncThunk(
+  'profile/removeCoverPhoto',
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/profiles/cover-photo`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

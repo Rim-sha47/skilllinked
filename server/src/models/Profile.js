@@ -26,6 +26,7 @@ const profileSchema = new mongoose.Schema(
     skills: [{ type: String }],
     languages: [{ type: String }],
     profileViews: { type: Number, default: 0 },
+    viewedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     experience: [
       {
         type: mongoose.Schema.Types.ObjectId,

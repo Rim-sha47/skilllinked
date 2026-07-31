@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
-import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
+import { motion } from 'framer-motion';
+import { socket } from '../../services/socket';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { FaEye, FaUserFriends, FaBriefcase, FaEnvelope, FaRobot, FaArrowRight, FaCheckCircle, FaBuilding, FaThumbsUp, FaComment, FaEdit } from 'react-icons/fa';
-import { fetchSuggestions, sendConnectionRequest } from '../../redux/slices/connectionSlice';
+import { fetchSuggestions, sendConnectionRequest, followUser, unfollowUser } from '../../redux/slices/connectionSlice';
 import { addSkill, updateAvatar, updateBasicInfo, fetchMyProfile } from '../../redux/slices/profileSlice';
 import { updateUser } from '../../redux/slices/authSlice';
 import { Modal } from '../../components/common/Modal';
@@ -16,9 +18,10 @@ import BasicInfoForm from '../../components/profile/BasicInfoForm';
 
 const Dashboard = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { user, token } = useSelector((state) => state.auth);
   const { data: profile } = useSelector((state) => state.profile);
-  const { suggestions } = useSelector((state) => state.connections);
+  const { suggestions, isLoading } = useSelector((state) => state.connections);
   const [dashboardData, setDashboardData] = useState({
     profileViews: 0,
     connections: 0,
@@ -35,6 +38,13 @@ const Dashboard = () => {
   });
 
   const [editItem, setEditItem] = useState(null);
+  const [hasResume, setHasResume] = useState(false);
+
+  useEffect(() => {
+    if (localStorage.getItem('skilllinked_resume_data')) {
+      setHasResume(true);
+    }
+  }, []);
 
   const openModal = (type, item = null) => {
     // For date inputs, we need to convert ISO strings to YYYY-MM-DD
@@ -91,7 +101,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/profiles/dashboard`, {
+        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/profiles/dashboard`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         // Merge with safe defaults to prevent null crashes
@@ -113,6 +123,27 @@ const Dashboard = () => {
       dispatch(fetchSuggestions());
       dispatch(fetchMyProfile());
     }
+
+    const handleNewMessage = () => {
+      setDashboardData(prev => ({ ...prev, unreadMessages: (prev.unreadMessages || 0) + 1 }));
+    };
+    
+    const handleNotification = (notif) => {
+      if (notif.type === 'new_follower' || notif.type === 'connection_accepted') {
+        setDashboardData(prev => ({ ...prev, connections: (prev.connections || 0) + 1 }));
+      }
+      if (notif.type === 'profile_view') {
+        setDashboardData(prev => ({ ...prev, profileViews: (prev.profileViews || 0) + 1 }));
+      }
+    };
+
+    socket.on('message received', handleNewMessage);
+    socket.on('notification', handleNotification);
+
+    return () => {
+      socket.off('message received', handleNewMessage);
+      socket.off('notification', handleNotification);
+    };
   }, [token, dispatch]);
 
   // Dynamic data for widgets — use safe fallbacks to prevent crash on null
@@ -163,7 +194,7 @@ const Dashboard = () => {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
         >
-           <Button className="shadow-glow"><FaRobot className="mr-2" /> AI Daily Insights</Button>
+           <Button className="shadow-glow" onClick={() => navigate('/ai')}><FaRobot className="mr-2" /> AI Daily Insights</Button>
         </motion.div>
       </div>
 
@@ -284,8 +315,6 @@ const Dashboard = () => {
                 <p className="text-text-secondary dark:text-gray-400 text-sm mb-4">Profiles with skills and a summary receive up to 3x more views from recruiters.</p>
                 <div className="flex gap-2 justify-center md:justify-start flex-wrap">
                   <Button size="sm" variant="outline" onClick={() => openModal('skill')}>Add Skills</Button>
-                  <Button size="sm" variant="outline" onClick={() => openModal('profilePic')}>Update Photo</Button>
-                  <Button size="sm" variant="outline" onClick={() => openModal('basicInfo')}>Edit Info (Bio)</Button>
                 </div>
               </div>
             </div>
@@ -334,8 +363,8 @@ const Dashboard = () => {
                 <p className="text-sm text-gray-500 text-center py-10">No recent activity found.</p>
               )}
               {dashboardData.recentActivity && dashboardData.recentActivity.length > 0 && (
-                <Button variant="ghost" className="w-full mt-4 text-primary justify-between">
-                  View all activity <FaArrowRight />
+                <Button variant="ghost" className="w-full mt-4 text-primary justify-between" onClick={() => navigate('/ai')}>
+                  View all daily insights <FaArrowRight />
                 </Button>
               )}
             </div>
@@ -352,13 +381,39 @@ const Dashboard = () => {
               </div>
             </div>
             <p className="text-sm text-center text-text-secondary dark:text-gray-300 mb-6 font-medium">Upload your latest resume for an AI-powered review and personalized job matches.</p>
-            <Button className="w-full shadow-glow">Analyze Resume</Button>
+            {hasResume ? (
+              <div className="flex gap-2">
+                <Button className="w-1/2 shadow-glow" onClick={() => navigate('/app/ai')}>Analyze</Button>
+                <Button className="w-1/2" variant="outline" onClick={() => {
+                  try {
+                    const data = localStorage.getItem('skilllinked_resume_data');
+                    if (data) {
+                      const arr = data.split(',');
+                      const mime = arr[0].match(/:(.*?);/)[1];
+                      const bstr = atob(arr[1]);
+                      let n = bstr.length;
+                      const u8arr = new Uint8Array(n);
+                      while(n--) {
+                        u8arr[n] = bstr.charCodeAt(n);
+                      }
+                      const blob = new Blob([u8arr], {type: mime});
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                    } else {
+                      navigate('/app/ai');
+                    }
+                  } catch(e) { navigate('/app/ai'); }
+                }}>View Resume</Button>
+              </div>
+            ) : (
+              <Button className="w-full shadow-glow" onClick={() => navigate('/app/ai')}>Upload Resume</Button>
+            )}
           </Card>
           
           <Card title="Suggested Connections">
             <div className="space-y-5 mt-4">
                {suggestions.slice(0, 3).map((suggestion) => (
-                 <div key={suggestion._id} className="flex items-center space-x-3 group cursor-pointer">
+                 <div key={suggestion._id} className="flex items-center space-x-3 group cursor-pointer" onClick={() => navigate(`/app/profile/${suggestion._id}`)}>
                    {suggestion.profilePicture && suggestion.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? (
                      <img src={suggestion.profilePicture} alt={suggestion.fullName || suggestion.username || 'User'} className="w-12 h-12 rounded-full object-cover border-2 border-transparent group-hover:border-primary transition-colors" />
                    ) : (
@@ -369,13 +424,38 @@ const Dashboard = () => {
                    <div className="flex-1 min-w-0">
                      <p className="text-sm font-bold text-text-primary dark:text-white truncate">{suggestion.fullName || suggestion.username || 'SkillLinked User'}</p>
                      <p className="text-xs text-text-secondary dark:text-gray-400 truncate">{suggestion.headline || 'Member'}</p>
+                     {suggestion.mutualConnectionsCount > 0 && (
+                       <p className="text-xs text-gray-400 dark:text-gray-500">{suggestion.mutualConnectionsCount} mutual</p>
+                     )}
                    </div>
-                   <button 
-                     onClick={() => dispatch(sendConnectionRequest(suggestion._id))}
-                     className="text-primary text-sm font-semibold hover:bg-primary/10 p-2 rounded-full transition-colors"
-                   >
-                     Connect
-                   </button>
+                   <div className="flex gap-2 shrink-0">
+                     <button 
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         if (suggestion.connectionStatus !== 'pending') {
+                           dispatch(sendConnectionRequest(suggestion._id));
+                         }
+                       }}
+                       className={`text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors ${suggestion.connectionStatus === 'pending' ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed' : 'bg-primary text-white hover:bg-blue-600'}`}
+                       disabled={isLoading || suggestion.connectionStatus === 'pending'}
+                     >
+                       {suggestion.connectionStatus === 'pending' ? 'Pending' : 'Connect'}
+                     </button>
+                     <button
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         if (suggestion.isFollowing) {
+                           dispatch(unfollowUser(suggestion._id));
+                         } else {
+                           dispatch(followUser(suggestion._id));
+                         }
+                       }}
+                       className={`text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors ${suggestion.isFollowing ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'border border-primary text-primary hover:bg-primary/10'}`}
+                       disabled={isLoading}
+                     >
+                       {suggestion.isFollowing ? 'Following' : 'Follow'}
+                     </button>
+                   </div>
                  </div>
                ))}
                {suggestions.length === 0 && (

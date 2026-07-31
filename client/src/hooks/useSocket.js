@@ -13,7 +13,7 @@ export const useSocket = () => {
     // Only connect if the user is authenticated
     if (isAuthenticated) {
       // Connect to the Socket.io server
-      const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+      const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5001';
       
       newSocket = io(SOCKET_URL, {
         autoConnect: true,

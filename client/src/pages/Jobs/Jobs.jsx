@@ -209,9 +209,12 @@ const Jobs = () => {
                             </div>
 
                             <div className="mt-4 flex flex-wrap gap-2">
-                              {job.remote && (
+                              {job.workplaceType === 'Remote' && (
                                 <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">Remote</span>
                               )}
+                              {job.skills?.slice(0, 5).map((skill, i) => (
+                                <span key={i} className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 px-3 py-1 rounded-full text-xs font-semibold">{skill}</span>
+                              ))}
                               {isApplied && (
                                 <span className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                                   <FaCheckCircle /> Applied

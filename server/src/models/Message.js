@@ -47,7 +47,37 @@ const messageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Message',
       default: null,
-    }
+    },
+    reactions: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        emoji: { type: String }
+      }
+    ],
+    deletedFor: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      }
+    ],
+    starredBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      }
+    ],
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+    attachments: [
+      {
+        url: String,
+        type: { type: String }, // 'image', 'video', 'document', 'audio'
+        name: String,
+        size: Number
+      }
+    ]
   },
   {
     timestamps: true,

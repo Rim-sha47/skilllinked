@@ -27,7 +27,8 @@ const notificationSchema = new mongoose.Schema(
         'post_mention', 
         'post_share',
         'company_update',
-        'new_follower'
+        'new_follower',
+        'profile_view'
       ],
       required: true,
     },

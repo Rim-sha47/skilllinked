@@ -12,7 +12,7 @@ exports.getMyProfile = async (req, res) => {
   try {
     let profile = await Profile.findOne({ user: req.user.id }).populate({
       path: 'user',
-      select: 'fullName username profilePicture bio headline location followers following followingCompanies',
+      select: 'fullName username profilePicture coverPhoto bio headline location followers following followingCompanies',
       populate: [
         { path: 'followers', select: 'fullName username profilePicture headline' },
         { path: 'following', select: 'fullName username profilePicture headline' },
@@ -21,7 +21,7 @@ exports.getMyProfile = async (req, res) => {
     });
 
     const userObj = await User.findById(req.user.id)
-      .select('fullName username profilePicture bio headline location followers following followingCompanies')
+      .select('fullName username profilePicture coverPhoto bio headline location followers following followingCompanies')
       .populate('followers', 'fullName username profilePicture headline')
       .populate('following', 'fullName username profilePicture headline')
       .populate('followingCompanies', 'name logo industry');
@@ -35,6 +35,15 @@ exports.getMyProfile = async (req, res) => {
     const education = await Education.find({ user: req.user.id }).sort({ from: -1 });
     const skills = await Skill.find({ user: req.user.id });
     const certifications = await Certification.find({ user: req.user.id }).sort({ issueDate: -1 });
+    
+    const Connection = require('../models/Connection');
+    const connectionsCount = await Connection.countDocuments({
+      $or: [{ sender: req.user.id }, { receiver: req.user.id }],
+      status: 'accepted'
+    });
+
+    const Post = require('../models/Post');
+    const postsCount = await Post.countDocuments({ user: req.user.id });
 
     res.json({
       ...profile._doc,
@@ -42,6 +51,8 @@ exports.getMyProfile = async (req, res) => {
       followersCount: userObj.followers ? userObj.followers.length : 0,
       followingCount: userObj.following ? userObj.following.length : 0,
       followingCompaniesCount: userObj.followingCompanies ? userObj.followingCompanies.length : 0,
+      connectionsCount,
+      postsCount,
       experience,
       education,
       skills: skills.map(s => s.name),
@@ -69,9 +80,21 @@ exports.getDashboardStats = async (req, res) => {
     const Job = require('../models/Job');
     const applications = await Job.countDocuments({ applicants: req.user.id });
 
+    const Connection = require('../models/Connection');
+    const connectionsCount = await Connection.countDocuments({
+      $or: [{ sender: req.user.id }, { receiver: req.user.id }],
+      status: 'accepted'
+    });
+
     // Try to get unread messages count (requires Message model)
     const Message = require('../models/Message');
-    const unreadMessages = await Message.countDocuments({ receiver: req.user.id, status: { $ne: 'seen' } });
+    const unreadMessages = await Message.countDocuments({ 
+      chat: { $exists: true }, // Ensure valid chat
+      $or: [
+        { receiver: req.user.id, status: { $ne: 'seen' } }, // If receiver field exists
+        { readBy: { $ne: req.user.id }, sender: { $ne: req.user.id } } // If using readBy array
+      ]
+    });
 
     // Get recent activity
     const Activity = require('../models/Activity');
@@ -79,7 +102,7 @@ exports.getDashboardStats = async (req, res) => {
 
     res.json({
       profileViews: profile?.profileViews || 0,
-      connections: user.followers ? user.followers.length : 0,
+      connections: connectionsCount || 0,
       applications: applications || 0,
       unreadMessages: unreadMessages || 0,
       profileCompletion: completion,
@@ -198,7 +221,7 @@ exports.getAllProfiles = async (req, res) => {
 exports.getProfileByUserId = async (req, res) => {
   try {
     const userObj = await User.findById(req.params.user_id)
-      .select('fullName username profilePicture bio headline location followers following followingCompanies')
+      .select('fullName username profilePicture coverPhoto bio headline location followers following followingCompanies')
       .populate('followers', 'fullName username profilePicture headline')
       .populate('following', 'fullName username profilePicture headline')
       .populate('followingCompanies', 'name logo industry');
@@ -217,12 +240,23 @@ exports.getProfileByUserId = async (req, res) => {
     const skills = await Skill.find({ user: req.params.user_id });
     const certifications = await Certification.find({ user: req.params.user_id }).sort({ issueDate: -1 });
 
+    const Connection = require('../models/Connection');
+    const connectionsCount = await Connection.countDocuments({
+      $or: [{ sender: req.params.user_id }, { receiver: req.params.user_id }],
+      status: 'accepted'
+    });
+
+    const Post = require('../models/Post');
+    const postsCount = await Post.countDocuments({ user: req.params.user_id });
+
     res.json({
       ...(profile._doc || profile),
       user: userObj,
       followersCount: userObj.followers ? userObj.followers.length : 0,
       followingCount: userObj.following ? userObj.following.length : 0,
       followingCompaniesCount: userObj.followingCompanies ? userObj.followingCompanies.length : 0,
+      connectionsCount,
+      postsCount,
       experience,
       education,
       skills: skills.map(s => s.name),
@@ -232,6 +266,55 @@ exports.getProfileByUserId = async (req, res) => {
     if (error.kind == 'ObjectId') {
       return res.status(404).json({ message: 'Profile not found' });
     }
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Record a profile view
+// @route   POST /api/profiles/user/:user_id/view
+// @access  Private
+exports.recordProfileView = async (req, res) => {
+  try {
+    const targetUserId = req.params.user_id;
+    const currentUserId = req.user.id;
+
+    if (targetUserId === currentUserId) {
+      return res.json({ message: 'Own profile, not counted' });
+    }
+
+    const profile = await Profile.findOne({ user: targetUserId });
+    
+    if (profile) {
+      if (!profile.viewedBy) {
+        profile.viewedBy = [];
+      }
+      
+      if (!profile.viewedBy.includes(currentUserId)) {
+        profile.viewedBy.push(currentUserId);
+        profile.profileViews = (profile.profileViews || 0) + 1;
+        await profile.save();
+
+        const Notification = require('../models/Notification');
+        const User = require('../models/User');
+        const currentUser = await User.findById(currentUserId).select('fullName');
+        
+        const notification = new Notification({
+          user: targetUserId,
+          sender: currentUserId,
+          type: 'profile_view',
+          content: `${currentUser?.fullName || 'Someone'} viewed your profile.`
+        });
+        await notification.save();
+
+        if (req.io) {
+          req.io.to(targetUserId.toString()).emit('notification', notification);
+          req.io.to(targetUserId.toString()).emit('profile_viewed');
+        }
+      }
+    }
+    
+    res.json({ message: 'Profile view recorded' });
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
@@ -362,7 +445,10 @@ exports.deleteCertification = async (req, res) => {
 // @access  Private
 exports.updateAvatar = async (req, res) => {
   try {
-    if (!req.file) {
+    const getFileUrl = require('../utils/getFileUrl');
+    const imageUrl = getFileUrl(req);
+    
+    if (!imageUrl) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
@@ -371,7 +457,7 @@ exports.updateAvatar = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    user.profilePicture = req.file.path; // Cloudinary URL
+    user.profilePicture = imageUrl;
     await user.save();
 
     res.json(user);
@@ -398,3 +484,49 @@ exports.removeAvatar = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Update cover photo
+// @route   PUT /api/profiles/cover-photo
+// @access  Private
+exports.updateCoverPhoto = async (req, res) => {
+  try {
+    const getFileUrl = require('../utils/getFileUrl');
+    const imageUrl = getFileUrl(req);
+    
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.coverPhoto = imageUrl;
+    await user.save();
+
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Remove cover photo
+// @route   DELETE /api/profiles/cover-photo
+// @access  Private
+exports.removeCoverPhoto = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.coverPhoto = '';
+    await user.save();
+
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+

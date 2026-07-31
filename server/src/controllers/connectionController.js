@@ -145,6 +145,9 @@ exports.getPendingRequests = async (req, res) => {
 // @desc    Get people you may know (suggestions)
 // @route   GET /api/connections/suggestions
 // @access  Private
+// @desc    Get people you may know (suggestions)
+// @route   GET /api/connections/suggestions
+// @access  Private
 exports.getSuggestions = async (req, res) => {
   try {
     // Find all connection IDs involving the current user
@@ -152,21 +155,55 @@ exports.getSuggestions = async (req, res) => {
       $or: [{ sender: req.user.id }, { receiver: req.user.id }],
     });
 
-    // Build a set of user IDs to exclude (connected or pending)
     const excludeIds = new Set([req.user.id]);
+    const myConnectionIds = new Set();
+    const pendingUserIds = new Set();
+    
     existingConnections.forEach(c => {
-      excludeIds.add(c.sender.toString());
-      excludeIds.add(c.receiver.toString());
+      if (c.status === 'accepted') {
+        // Exclude accepted connections from suggestions
+        excludeIds.add(c.sender.toString());
+        excludeIds.add(c.receiver.toString());
+        myConnectionIds.add(c.sender.toString() === req.user.id ? c.receiver.toString() : c.sender.toString());
+      } else if (c.status === 'pending') {
+        // Track pending but don't exclude - we want to show them with "Pending" status
+        const otherUserId = c.sender.toString() === req.user.id ? c.receiver.toString() : c.sender.toString();
+        pendingUserIds.add(otherUserId);
+      }
     });
 
-    // Find users not in that set
-    const suggestions = await User.find({
+    // Find users not in exclude set (accepted connections + self)
+    const users = await User.find({
       _id: { $nin: Array.from(excludeIds) },
     })
       .select('fullName username profilePicture headline location')
-      .limit(20);
+      .limit(20)
+      .lean();
 
-    res.json(suggestions);
+    // Calculate mutual connections and add connectionStatus
+    const suggestionsWithMutuals = await Promise.all(users.map(async (u) => {
+      const userConns = await Connection.find({
+        $or: [{ sender: u._id }, { receiver: u._id }],
+        status: 'accepted'
+      });
+      
+      let mutualCount = 0;
+      userConns.forEach(c => {
+        const otherId = c.sender.toString() === u._id.toString() ? c.receiver.toString() : c.sender.toString();
+        if (myConnectionIds.has(otherId)) mutualCount++;
+      });
+      
+      return {
+        ...u,
+        mutualConnectionsCount: mutualCount,
+        connectionStatus: pendingUserIds.has(u._id.toString()) ? 'pending' : 'none'
+      };
+    }));
+
+    // Sort by mutual connections descending
+    suggestionsWithMutuals.sort((a, b) => b.mutualConnectionsCount - a.mutualConnectionsCount);
+
+    res.json(suggestionsWithMutuals);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -218,16 +255,21 @@ exports.followUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (!currentUser.following.includes(targetUserId)) {
-      currentUser.following.push(targetUserId);
-      await currentUser.save();
-    }
+    // Atomic update to prevent duplicates on rapid clicks
+    const updatedCurrentUser = await User.findByIdAndUpdate(
+      currentUserId,
+      { $addToSet: { following: targetUserId } },
+      { new: true }
+    );
 
+    const updatedTargetUser = await User.findByIdAndUpdate(
+      targetUserId,
+      { $addToSet: { followers: currentUserId } },
+      { new: true }
+    );
+
+    // Notify targetUser only if it was a new follow
     if (!targetUser.followers.includes(currentUserId)) {
-      targetUser.followers.push(currentUserId);
-      await targetUser.save();
-
-      // Notify targetUser
       const Notification = require('../models/Notification');
       const notif = await Notification.create({
         user: targetUserId,
@@ -235,10 +277,12 @@ exports.followUser = async (req, res) => {
         type: 'new_follower',
         content: `${currentUser.fullName || currentUser.username} started following you.`,
       });
+      // Populate sender before emitting for UI mapping
+      await notif.populate('sender', 'fullName username profilePicture');
       if (req.io) req.io.to(targetUserId.toString()).emit('notification', notif);
     }
 
-    res.json({ message: 'User followed successfully', followersCount: targetUser.followers.length });
+    res.json({ message: 'User followed successfully', followersCount: updatedTargetUser.followers.length });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -259,21 +303,58 @@ exports.unfollowUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    currentUser.following = currentUser.following.filter(
-      (id) => id.toString() !== targetUserId
+    // Atomic pull
+    await User.findByIdAndUpdate(
+      currentUserId,
+      { $pull: { following: targetUserId } }
     );
-    await currentUser.save();
 
-    targetUser.followers = targetUser.followers.filter(
-      (id) => id.toString() !== currentUserId
+    const updatedTargetUser = await User.findByIdAndUpdate(
+      targetUserId,
+      { $pull: { followers: currentUserId } },
+      { new: true }
     );
-    await targetUser.save();
 
-    res.json({ message: 'User unfollowed successfully', followersCount: targetUser.followers.length });
+    res.json({ message: 'User unfollowed successfully', followersCount: updatedTargetUser.followers.length });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Remove a follower
+// @route   DELETE /api/connections/follower/:id
+// @access  Private
+exports.removeFollower = async (req, res) => {
+  try {
+    const followerId = req.params.id;
+    const currentUserId = req.user.id;
+
+    const follower = await User.findById(followerId);
+    const currentUser = await User.findById(currentUserId);
+
+    if (!follower || !currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Remove follower from current user's followers
+    const updatedCurrentUser = await User.findByIdAndUpdate(
+      currentUserId,
+      { $pull: { followers: followerId } },
+      { new: true }
+    );
+
+    // Remove current user from follower's following
+    await User.findByIdAndUpdate(
+      followerId,
+      { $pull: { following: currentUserId } }
+    );
+
+    res.json({ message: 'Follower removed successfully', followersCount: updatedCurrentUser.followers.length });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 
 // @desc    Get user followers
 // @route   GET /api/connections/followers/:id
@@ -296,6 +377,26 @@ exports.getFollowing = async (req, res) => {
     const user = await User.findById(req.params.id).populate('following', 'fullName username profilePicture headline location bio');
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user.following || []);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get connections for a specific user
+// @route   GET /api/connections/user/:userId
+// @access  Public
+exports.getConnectionsByUser = async (req, res) => {
+  try {
+    const connections = await Connection.find({
+      $or: [{ sender: req.params.userId }, { receiver: req.params.userId }],
+      status: 'accepted',
+    }).populate('sender receiver', 'fullName username profilePicture headline');
+
+    const friends = connections.map(c =>
+      c.sender._id.toString() === req.params.userId ? c.receiver : c.sender
+    );
+
+    res.json(friends);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

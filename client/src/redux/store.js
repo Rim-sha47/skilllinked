@@ -7,6 +7,8 @@ import notificationReducer from './slices/notificationSlice';
 import jobReducer          from './slices/jobSlice';
 import messagingReducer    from './slices/messagingSlice';
 import companyReducer      from './slices/companySlice';
+import feedReducer         from './slices/feedSlice';
+import sidebarReducer      from './slices/sidebarSlice';
 
 const store = configureStore({
   reducer: {
@@ -18,7 +20,10 @@ const store = configureStore({
     jobs:          jobReducer,
     messaging:     messagingReducer,
     companies:     companyReducer,
+    feed:          feedReducer,
+    sidebar:       sidebarReducer,
   },
 });
 
 export default store;
+

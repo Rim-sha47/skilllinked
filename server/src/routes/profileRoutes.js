@@ -12,7 +12,8 @@ const {
   deleteSkill,
   addCertification,
   deleteCertification,
-  updateAvatar
+  updateAvatar,
+  recordProfileView
 } = require('../controllers/profileController');
 const { protect } = require('../middlewares/authMiddleware');
 const { upload } = require('../config/cloudinary');
@@ -119,6 +120,7 @@ router.get('/', getAllProfiles);
  *         description: Profile not found
  */
 router.get('/user/:user_id', getProfileByUserId);
+router.post('/user/:user_id/view', protect, recordProfileView);
 
 // Experience routes
 router.post('/experience', protect, addExperience);
@@ -139,6 +141,11 @@ router.delete('/certifications/:cert_id', protect, deleteCertification);
 // Avatar route
 router.put('/avatar', protect, upload.single('file'), updateAvatar);
 router.delete('/avatar', protect, require('../controllers/profileController').removeAvatar);
+
+// Cover Photo route
+router.put('/cover-photo', protect, upload.single('file'), require('../controllers/profileController').updateCoverPhoto);
+router.delete('/cover-photo', protect, require('../controllers/profileController').removeCoverPhoto);
+
 // User Info route
 router.put('/user-info', protect, require('../controllers/profileController').updateUserInfo);
 

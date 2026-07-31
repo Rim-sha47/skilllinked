@@ -103,7 +103,7 @@ const Login = () => {
       navigate('/app/dashboard');
     } catch (err) {
       console.error('Google login error:', err);
-      setError('Google sign‑in failed. Please try again.');
+      setError(err.message || 'Google sign‑in failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

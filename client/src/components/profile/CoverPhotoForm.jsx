@@ -4,10 +4,10 @@ import 'react-image-crop/dist/ReactCrop.css';
 import { Button } from '../../components/common/Button';
 import { getCroppedImg } from '../../utils/cropImage';
 
-export default function ProfilePicForm({ onSubmit, isSubmitting }) {
+export default function CoverPhotoForm({ onSubmit, isSubmitting }) {
   const [upImg, setUpImg] = useState();
   const imgRef = useRef(null);
-  const [crop, setCrop] = useState({ unit: '%', width: 50, aspect: 1 });
+  const [crop, setCrop] = useState({ unit: '%', width: 100, aspect: 4 / 1 });
   const [completedCrop, setCompletedCrop] = useState(null);
 
   const onSelectFile = (e) => {
@@ -27,9 +27,9 @@ export default function ProfilePicForm({ onSubmit, isSubmitting }) {
     if (!completedCrop || !imgRef.current) return;
     
     try {
-      const croppedBlob = await getCroppedImg(imgRef.current, completedCrop, 'profile.jpg');
+      const croppedBlob = await getCroppedImg(imgRef.current, completedCrop, 'cover.jpg');
       const fd = new FormData();
-      fd.append('file', croppedBlob, 'profile.jpg');
+      fd.append('file', croppedBlob, 'cover.jpg');
       onSubmit(fd);
     } catch (err) {
       console.error(err);
@@ -51,8 +51,7 @@ export default function ProfilePicForm({ onSubmit, isSubmitting }) {
             crop={crop}
             onChange={(c) => setCrop(c)}
             onComplete={(c) => setCompletedCrop(c)}
-            aspect={1}
-            circularCrop
+            aspect={4 / 1}
           >
             <img src={upImg} onLoad={onLoad} alt="Upload Preview" style={{ maxHeight: '300px' }} />
           </ReactCrop>

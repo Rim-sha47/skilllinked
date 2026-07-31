@@ -79,7 +79,7 @@ const Signup = () => {
       navigate('/app/dashboard');
     } catch (err) {
       console.error('Google signup error:', err);
-      setError('Google sign-up failed. Please try again.');
+      setError(err.message || 'Google sign-up failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

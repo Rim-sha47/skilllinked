@@ -4,6 +4,7 @@ const chatSchema = new mongoose.Schema(
   {
     chatName: { type: String, trim: true },
     isGroupChat: { type: Boolean, default: false },
+    groupIcon: { type: String, default: '' },
     users: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -23,7 +24,25 @@ const chatSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
       }
-    ]
+    ],
+    pinnedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      }
+    ],
+    mutedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      }
+    ],
+    archivedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      }
+    ],
   },
   {
     timestamps: true,

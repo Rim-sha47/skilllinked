@@ -35,24 +35,26 @@ exports.getJobs = async (req, res) => {
   try {
     const { search, location, type, remote } = req.query;
 
-    const query = { status: 'open' };
+    const query = {};
 
     if (search) {
+      const searchRegex = { $regex: search, $options: 'i' };
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { requirements: { $regex: search, $options: 'i' } },
+        { title: searchRegex },
+        { description: searchRegex },
+        { requirements: searchRegex },
+        { skills: searchRegex },
       ];
     }
     if (location) query.location = { $regex: location, $options: 'i' };
     if (type) query.type = type;
-    if (remote === 'true') query.remote = true;
+    if (remote === 'true') query.workplaceType = 'Remote';
 
     const jobs = await Job.find(query)
       .populate('company', 'name logo')
       .populate('postedBy', 'name avatar')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(100);
 
     res.json(jobs);
   } catch (error) {

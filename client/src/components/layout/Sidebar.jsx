@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useSelector, useDispatch } from 'react-redux';
 import Modal from '../common/Modal';
@@ -37,6 +37,7 @@ const navItems = [
 const Sidebar = ({ isOpen = false, onClose }) => {
   const { user: currentUser } = useSelector((state) => state.auth);
   const { items: notifications } = useSelector((state) => state.notifications);
+  const navigate = useNavigate();
   
   const unreadNotificationsCount = notifications?.filter(n => !n.isRead)?.length || 0;
   
@@ -212,12 +213,12 @@ const Sidebar = ({ isOpen = false, onClose }) => {
               </button>
             </div>
             <div className="flex justify-center gap-4 mt-3 text-xs font-bold">
-              <div className="text-center cursor-pointer hover:text-primary transition-colors">
+              <div className="text-center cursor-pointer hover:text-primary transition-colors" onClick={() => navigate('/app/profile?modal=following')}>
                 <p className="text-text-primary dark:text-white">{currentUser?.following?.length || 0}</p>
                 <p className="text-text-secondary dark:text-gray-500">Following</p>
               </div>
               <div className="w-px bg-gray-200 dark:bg-gray-700" />
-              <div className="text-center cursor-pointer hover:text-primary transition-colors">
+              <div className="text-center cursor-pointer hover:text-primary transition-colors" onClick={() => navigate('/app/profile?modal=followers')}>
                 <p className="text-text-primary dark:text-white">{currentUser?.followers?.length || 0}</p>
                 <p className="text-text-secondary dark:text-gray-500">Followers</p>
               </div>
