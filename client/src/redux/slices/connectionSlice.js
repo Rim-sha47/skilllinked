@@ -114,11 +114,20 @@ const connectionSlice = createSlice({
     });
 
     // ── sendConnectionRequest ── (mark as pending — the other user must accept)
+    builder.addCase(sendConnectionRequest.pending, (state) => {
+      state.isLoading = true;
+      state.error = null;
+    });
     builder.addCase(sendConnectionRequest.fulfilled, (state, action) => {
+      state.isLoading = false;
       const suggestion = state.suggestions.find(u => u._id === action.payload);
       if (suggestion) {
         suggestion.connectionStatus = 'pending';
       }
+    });
+    builder.addCase(sendConnectionRequest.rejected, (state, action) => {
+      state.isLoading = false;
+      state.error = action.payload;
     });
 
     // ── acceptConnectionRequest ── (remove from pendingRequests)

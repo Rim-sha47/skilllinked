@@ -38,6 +38,10 @@ const userSchema = new mongoose.Schema(
       enum: ['User', 'Admin'],
       default: 'User',
     },
+    isPremium: {
+      type: Boolean,
+      default: false,
+    },
     profilePicture: {
       type: String,
       default: 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg',
@@ -92,6 +96,31 @@ const userSchema = new mongoose.Schema(
     otpExpire: Date,
     resetPasswordToken: String,
     resetPasswordExpire: Date,
+    chatPreferences: {
+      global: {
+        theme: { type: String, enum: ['light', 'dark', 'system'], default: 'system' },
+        wallpaper: { type: String, default: '' },
+        accentColor: { type: String, default: 'blue' },
+        bubbleColorSent: { type: String, default: '' },
+        bubbleColorReceived: { type: String, default: '' },
+        blur: { type: Number, default: 0 },
+        opacity: { type: Number, default: 100 },
+        fontSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
+        bubbleRadius: { type: String, default: 'lg' }
+      },
+      perChat: [
+        {
+          chatId: { type: mongoose.Schema.Types.ObjectId, ref: 'Chat' },
+          wallpaper: { type: String },
+          theme: { type: String },
+          accentColor: { type: String },
+          blur: { type: Number },
+          opacity: { type: Number },
+          bubbleColorSent: { type: String },
+          bubbleColorReceived: { type: String }
+        }
+      ]
+    },
   },
   {
     timestamps: true,

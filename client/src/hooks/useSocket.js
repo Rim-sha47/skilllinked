@@ -40,8 +40,8 @@ export const useSocket = () => {
         console.log('Socket disconnected');
       });
 
-      newSocket.on('connect_error', (err) => {
-        console.error('Socket connection error:', err.message);
+      newSocket.on('connect_error', () => {
+        setIsConnected(false);
       });
 
       setSocket(newSocket);

@@ -199,3 +199,23 @@ exports.logout = (req, res) => {
   res.json({ message: 'Logged out successfully' });
 };
 
+// @desc    Upgrade user to Premium
+// @route   PUT /api/auth/upgrade
+// @access  Private
+exports.upgradeToPremium = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (user.isPremium) {
+      return res.status(400).json({ message: 'You are already a Premium member' });
+    }
+
+    user.isPremium = true;
+    await user.save();
+
+    res.json({ message: 'Upgraded to Premium successfully!', user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

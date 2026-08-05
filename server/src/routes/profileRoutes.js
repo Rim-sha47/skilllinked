@@ -149,4 +149,8 @@ router.delete('/cover-photo', protect, require('../controllers/profileController
 // User Info route
 router.put('/user-info', protect, require('../controllers/profileController').updateUserInfo);
 
+// Chat Preferences routes
+router.put('/chat-preferences', protect, require('../controllers/profileController').updateChatPreferences);
+router.post('/chat-preferences/wallpaper', protect, upload.single('file'), require('../controllers/profileController').uploadChatWallpaper);
+
 module.exports = router;

@@ -7,7 +7,8 @@ const {
   loginAdmin,
   refreshToken,
   getMe,
-  logout
+  logout,
+  upgradeToPremium
 } = require('../controllers/authController');
 const { googleAuth } = require('../controllers/googleAuthController');
 const { protect } = require('../middlewares/authMiddleware');
@@ -25,5 +26,6 @@ router.post('/google', googleAuth);
 
 
 router.get('/me', protect, getMe);
+router.put('/upgrade', protect, upgradeToPremium);
 
 module.exports = router;

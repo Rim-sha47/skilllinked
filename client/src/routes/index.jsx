@@ -57,8 +57,8 @@ export const AppRoutes = () => (
   <Suspense fallback={<PageLoader />}>
     <Routes>
       {/* ── Public ────────────────────────────────────────── */}
+      <Route path="/"                     element={<Landing />} />
       <Route element={<PublicLayout />}>
-        <Route path="/"                     element={<Landing />} />
         <Route path="/auth/login"           element={<Login />} />
         <Route path="/auth/signup"          element={<Signup />} />
         <Route path="/auth/forgot-password" element={<Placeholder title="Forgot Password" />} />

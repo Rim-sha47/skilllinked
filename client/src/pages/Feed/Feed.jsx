@@ -177,6 +177,7 @@ const Feed = () => {
   ];
 
   return (
+    <>
     <div className="max-w-3xl mx-auto space-y-6 pb-10">
       
       {/* ─── Stories Bar ─── */}
@@ -567,6 +568,7 @@ const Feed = () => {
         </div>
       )}
     </AnimatePresence>
+    </>
   );
 };
 

@@ -98,6 +98,15 @@ const Dashboard = () => {
     } catch (err) { console.error(err); }
   };
 
+  const handleSendConnectionRequest = async (userId) => {
+    try {
+      await dispatch(sendConnectionRequest(userId)).unwrap();
+      dispatch(fetchSuggestions());
+    } catch (err) {
+      console.error('Failed to send connection request', err);
+    }
+  };
+
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
@@ -193,8 +202,9 @@ const Dashboard = () => {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
+          className="w-full sm:w-auto"
         >
-           <Button className="shadow-glow" onClick={() => navigate('/ai')}><FaRobot className="mr-2" /> AI Daily Insights</Button>
+           <Button className="shadow-glow w-full sm:w-auto" onClick={() => navigate('/app/ai')}><FaRobot className="mr-2" /> AI Daily Insights</Button>
         </motion.div>
       </div>
 
@@ -363,7 +373,7 @@ const Dashboard = () => {
                 <p className="text-sm text-gray-500 text-center py-10">No recent activity found.</p>
               )}
               {dashboardData.recentActivity && dashboardData.recentActivity.length > 0 && (
-                <Button variant="ghost" className="w-full mt-4 text-primary justify-between" onClick={() => navigate('/ai')}>
+                <Button variant="ghost" className="w-full mt-4 text-primary justify-between" onClick={() => navigate('/app/ai')}>
                   View all daily insights <FaArrowRight />
                 </Button>
               )}
@@ -375,16 +385,16 @@ const Dashboard = () => {
         <div className="space-y-8">
           
           <Card title="AI Career Assistant" glassHeavy className="border-accent/30 bg-gradient-to-b from-white/60 to-accent/5 dark:from-dark-card/60 dark:to-accent/10">
-            <div className="flex justify-center mb-6 mt-4">
+            <div className="flex flex-col items-center justify-center mb-6 mt-4 gap-4">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary to-accent flex items-center justify-center text-white shadow-glow">
                 <FaRobot size={32} />
               </div>
             </div>
             <p className="text-sm text-center text-text-secondary dark:text-gray-300 mb-6 font-medium">Upload your latest resume for an AI-powered review and personalized job matches.</p>
             {hasResume ? (
-              <div className="flex gap-2">
-                <Button className="w-1/2 shadow-glow" onClick={() => navigate('/app/ai')}>Analyze</Button>
-                <Button className="w-1/2" variant="outline" onClick={() => {
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button className="w-full sm:w-1/2 shadow-glow" onClick={() => navigate('/app/ai')}>Analyze</Button>
+                <Button className="w-full sm:w-1/2" variant="outline" onClick={() => {
                   try {
                     const data = localStorage.getItem('skilllinked_resume_data');
                     if (data) {
@@ -412,52 +422,55 @@ const Dashboard = () => {
           
           <Card title="Suggested Connections">
             <div className="space-y-5 mt-4">
-               {suggestions.slice(0, 3).map((suggestion) => (
-                 <div key={suggestion._id} className="flex items-center space-x-3 group cursor-pointer" onClick={() => navigate(`/app/profile/${suggestion._id}`)}>
-                   {suggestion.profilePicture && suggestion.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? (
-                     <img src={suggestion.profilePicture} alt={suggestion.fullName || suggestion.username || 'User'} className="w-12 h-12 rounded-full object-cover border-2 border-transparent group-hover:border-primary transition-colors" />
-                   ) : (
-                     <div className="w-12 h-12 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-xl border-2 border-transparent group-hover:border-primary transition-colors">
-                       {(suggestion.fullName || suggestion.username || 'U').charAt(0).toUpperCase()}
-                     </div>
-                   )}
-                   <div className="flex-1 min-w-0">
-                     <p className="text-sm font-bold text-text-primary dark:text-white truncate">{suggestion.fullName || suggestion.username || 'SkillLinked User'}</p>
-                     <p className="text-xs text-text-secondary dark:text-gray-400 truncate">{suggestion.headline || 'Member'}</p>
-                     {suggestion.mutualConnectionsCount > 0 && (
-                       <p className="text-xs text-gray-400 dark:text-gray-500">{suggestion.mutualConnectionsCount} mutual</p>
+               {suggestions.slice(0, 3).map((suggestion) => {
+                 const isFollowing = user?.following?.includes(suggestion._id);
+                 return (
+                   <div key={suggestion._id} className="flex items-center space-x-3 group cursor-pointer" onClick={() => navigate(`/app/profile/${suggestion._id}`)}>
+                     {suggestion.profilePicture && suggestion.profilePicture !== 'https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg' ? (
+                       <img src={suggestion.profilePicture} alt={suggestion.fullName || suggestion.username || 'User'} className="w-12 h-12 rounded-full object-cover border-2 border-transparent group-hover:border-primary transition-colors" />
+                     ) : (
+                       <div className="w-12 h-12 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-xl border-2 border-transparent group-hover:border-primary transition-colors">
+                         {(suggestion.fullName || suggestion.username || 'U').charAt(0).toUpperCase()}
+                       </div>
                      )}
+                     <div className="flex-1 min-w-0">
+                       <p className="text-sm font-bold text-text-primary dark:text-white truncate">{suggestion.fullName || suggestion.username || 'SkillLinked User'}</p>
+                       <p className="text-xs text-text-secondary dark:text-gray-400 truncate">{suggestion.headline || 'Member'}</p>
+                       {suggestion.mutualConnectionsCount > 0 && (
+                         <p className="text-xs text-gray-400 dark:text-gray-500">{suggestion.mutualConnectionsCount} mutual</p>
+                       )}
+                     </div>
+                     <div className="flex gap-2 shrink-0">
+                       <button 
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           if (suggestion.connectionStatus !== 'pending') {
+                             handleSendConnectionRequest(suggestion._id);
+                           }
+                         }}
+                         className={`text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors ${suggestion.connectionStatus === 'pending' ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed' : 'bg-primary text-white hover:bg-blue-600'}`}
+                         disabled={isLoading || suggestion.connectionStatus === 'pending'}
+                       >
+                         {suggestion.connectionStatus === 'pending' ? 'Pending' : 'Connect'}
+                       </button>
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           if (isFollowing) {
+                             dispatch(unfollowUser(suggestion._id));
+                           } else {
+                             dispatch(followUser(suggestion._id));
+                           }
+                         }}
+                         className={`text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors ${isFollowing ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'border border-primary text-primary hover:bg-primary/10'}`}
+                         disabled={isLoading}
+                       >
+                         {isFollowing ? 'Following' : 'Follow'}
+                       </button>
+                     </div>
                    </div>
-                   <div className="flex gap-2 shrink-0">
-                     <button 
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         if (suggestion.connectionStatus !== 'pending') {
-                           dispatch(sendConnectionRequest(suggestion._id));
-                         }
-                       }}
-                       className={`text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors ${suggestion.connectionStatus === 'pending' ? 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed' : 'bg-primary text-white hover:bg-blue-600'}`}
-                       disabled={isLoading || suggestion.connectionStatus === 'pending'}
-                     >
-                       {suggestion.connectionStatus === 'pending' ? 'Pending' : 'Connect'}
-                     </button>
-                     <button
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         if (suggestion.isFollowing) {
-                           dispatch(unfollowUser(suggestion._id));
-                         } else {
-                           dispatch(followUser(suggestion._id));
-                         }
-                       }}
-                       className={`text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors ${suggestion.isFollowing ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'border border-primary text-primary hover:bg-primary/10'}`}
-                       disabled={isLoading}
-                     >
-                       {suggestion.isFollowing ? 'Following' : 'Follow'}
-                     </button>
-                   </div>
-                 </div>
-               ))}
+                 );
+               })}
                {suggestions.length === 0 && (
                  <p className="text-sm text-gray-500 text-center">No suggestions right now.</p>
                )}

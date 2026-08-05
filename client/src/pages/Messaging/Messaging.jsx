@@ -22,10 +22,13 @@ import {
 } from '../../redux/slices/messagingSlice';
 import { setActiveTab as setSidebarTab, createCallRecord, fetchCallHistory } from '../../redux/slices/sidebarSlice';
 import {
-  StatusPanel, CommunitiesPanel, CallsPanel, StarredPanel, ArchivedPanel, SettingsPanel, ProfilePanel,
+  StatusPanel, CommunitiesPanel, CallsPanel, StarredPanel, ArchivedPanel, SettingsPanel, ProfilePanel, MetaAIPanel,
 } from './SidebarPanels';
 import { CallModal } from './CallModal';
 import { socket } from '../../services/socket';
+import ChatSettings from '../../components/chat/ChatSettings';
+import { LinkedDevicesModal, AdvertiseModal, BroadcastModal, CommunitiesModal, ListsModal } from '../../components/chat/MessagingActionModals';
+import SkillLinkedAIChat from '../../components/chat/SkillLinkedAIChat';
 
 // ─── Helpers ─────────────────────────────────────────────────
 const formatTime = (d) => {
@@ -606,6 +609,11 @@ const Messaging = () => {
   const { user } = useSelector(s => s.auth);
   const { activeTab: sidebarTab } = useSelector(s => s.sidebar);
 
+  const chatSettings = useSelector(s => s.chatSettings);
+  const globalSettings = chatSettings?.global || {};
+  const perChatSettings = chatSettings?.perChat?.find(pc => pc.chatId === activeChatId) || {};
+  const currentSettings = { ...globalSettings, ...perChatSettings };
+
   const [text, setText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -617,9 +625,11 @@ const Messaging = () => {
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState(null);  // chatId of open menu
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
   const [callState, setCallState] = useState({ active: false, receiving: false, caller: null, type: null, accepted: false });
   const [editingMessage, setEditingMessage] = useState(null); // message being edited
   const [showUserProfile, setShowUserProfile] = useState(false); // profile panel
+  const [activeActionModal, setActiveActionModal] = useState(null); // 'advertise' | 'broadcast' | 'communities' | 'lists' | 'devices'
   const [forwardingMessage, setForwardingMessage] = useState(null); // for forward modal
   const [selectedFiles, setSelectedFiles] = useState([]); // multiple attachments
   const [inChatSearch, setInChatSearch] = useState(false); // in-chat message search toggle
@@ -980,7 +990,7 @@ const Messaging = () => {
 
 
   // ─── Filter chats by tab ─────────────────────────────────
-  const filteredChats = chats.filter(c => {
+  let filteredChats = chats.filter(c => {
     if (c.deletedBy?.map(String).includes(user?._id)) return false;
     const isArchived = c.archivedBy?.map(String).includes(user?._id);
     if (activeTab === 'archived') return isArchived;
@@ -991,6 +1001,20 @@ const Messaging = () => {
     }
     return true;
   });
+
+  if (activeTab === 'inbox') {
+    filteredChats = [
+      {
+        _id: 'skilllinked-ai',
+        isGroupChat: false,
+        isAIChat: true,
+        users: [{ _id: 'ai', fullName: 'SkillLinked AI', headline: 'AI Assistant', profilePicture: null }],
+        latestMessage: { content: 'How can I help you today?', createdAt: new Date().toISOString() },
+        pinnedBy: [user?._id], // Always pinned
+      },
+      ...filteredChats
+    ];
+  }
 
   const archivedCount = chats.filter(c => c.archivedBy?.map(String).includes(user?._id)).length;
 
@@ -1070,7 +1094,7 @@ const Messaging = () => {
 
       {/* ── LEFT PANEL ── */}
       <div className={`
-        w-full md:w-[320px] lg:w-[360px] flex-shrink-0 border-r border-gray-200 dark:border-gray-700/60 flex flex-col bg-white dark:bg-[#111b21] overflow-hidden
+        w-full md:w-[320px] lg:w-[360px] flex-shrink-0 border-r border-gray-200 dark:border-gray-700/60 flex flex-col bg-white dark:bg-[#111b21] overflow-hidden relative
         ${showChatOnMobile ? 'hidden md:flex' : 'flex'}
       `}>
         {/* Non-chats panels */}
@@ -1135,6 +1159,11 @@ const Messaging = () => {
               <ProfilePanel onBack={() => dispatch(setSidebarTab('chats'))} />
             </motion.div>
           )}
+          {sidebarTab === 'metaai' && (
+            <motion.div key="metaai" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="flex flex-col h-full">
+              <MetaAIPanel onBack={() => dispatch(setSidebarTab('chats'))} />
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* CHATS tab (default) */}
@@ -1152,9 +1181,42 @@ const Messaging = () => {
               >
                 <FaUsers size={16} />
               </button>
-              <button className="p-2.5 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="More">
-                <FaEllipsisV size={16} />
-              </button>
+              <div className="relative">
+                <button onClick={() => setSidebarMenuOpen(!sidebarMenuOpen)} className="p-2.5 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="More">
+                  <FaEllipsisV size={16} />
+                </button>
+                <AnimatePresence>
+                  {sidebarMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9, y: -8 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9, y: -8 }}
+                      transition={{ duration: 0.12 }}
+                      className="absolute right-0 top-10 bg-white dark:bg-[#202c33] rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 py-2 z-50 w-48 overflow-hidden"
+                    >
+                      {[
+                        { label: 'Advertise', onClick: () => { setSidebarMenuOpen(false); setActiveActionModal('advertise'); } },
+                        { label: 'New group', onClick: () => { setSidebarMenuOpen(false); setShowCreateGroup(true); } },
+                        { label: 'Business broadcasts', onClick: () => { setSidebarMenuOpen(false); setActiveActionModal('broadcast'); } },
+                        { label: 'Communities', onClick: () => { setSidebarMenuOpen(false); setActiveActionModal('communities'); } },
+                        { label: 'Lists', onClick: () => { setSidebarMenuOpen(false); setActiveActionModal('lists'); } },
+                        { label: 'Linked devices', onClick: () => { setSidebarMenuOpen(false); setActiveActionModal('devices'); } },
+                        { label: 'Starred messages', onClick: () => { setSidebarMenuOpen(false); dispatch(setSidebarTab('starred')); } },
+                        { label: '🤖 SkillLinked AI', onClick: () => { setSidebarMenuOpen(false); dispatch(setSidebarTab('metaai')); } },
+                        { label: 'Settings', onClick: () => { setSidebarMenuOpen(false); dispatch(setSidebarTab('settings')); } },
+                      ].map((item, i) => (
+                        <button
+                          key={i}
+                          onClick={item.onClick}
+                          className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
 
@@ -1297,6 +1359,17 @@ const Messaging = () => {
             );
           })}
         </div>
+
+        {/* WhatsApp style AI Button */}
+        <button
+          onClick={() => dispatch(setSidebarTab('metaai'))}
+          className="absolute bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-[0_4px_20px_rgba(168,85,247,0.4)] hover:shadow-[0_6px_25px_rgba(168,85,247,0.6)] hover:scale-105 transition-all z-40 border-2 border-white dark:border-gray-900"
+          title="SkillLinked AI"
+        >
+          <svg viewBox="0 0 24 24" className="w-7 h-7 fill-white">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
+          </svg>
+        </button>
         </>
         )}
       </div>
@@ -1305,8 +1378,19 @@ const Messaging = () => {
       <div className={`
         flex-1 flex flex-col min-w-0 relative bg-[#efeae2] dark:bg-[#0b141a]
         ${showChatOnMobile ? 'flex' : 'hidden md:flex'}
-      `}>
-        {!activeChat ? (
+      `}
+      style={currentSettings.wallpaper ? {
+        backgroundImage: `url(${currentSettings.wallpaper})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      } : {}}
+      >
+        {currentSettings.wallpaper && currentSettings.blur > 0 && (
+          <div className="absolute inset-0 bg-white/20 dark:bg-black/20 pointer-events-none z-0" style={{ backdropFilter: `blur(${currentSettings.blur}px)` }}></div>
+        )}
+        {activeChatId === 'skilllinked-ai' ? (
+          <SkillLinkedAIChat onBack={handleBackToList} />
+        ) : !activeChat ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center px-6">
               <div className="w-[180px] h-[180px] mx-auto mb-6 flex items-center justify-center">
@@ -1500,11 +1584,10 @@ const Messaging = () => {
               )}
             </AnimatePresence>
 
-            {/* Messages Area */}
             <div
               ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto px-3 md:px-5 py-4 space-y-0.5 custom-scrollbar"
-              onClick={() => { setChatMenuOpen(null); setHeaderMenuOpen(false); setShowEmoji(false); }}
+              className="flex-1 overflow-y-auto px-3 md:px-5 py-4 space-y-0.5 custom-scrollbar z-10"
+              onClick={() => { setChatMenuOpen(null); setHeaderMenuOpen(false); setShowEmoji(false); setSidebarMenuOpen(false); }}
               onScroll={handleMessagesScroll}
             >
               {isLoadingMessages && activeMsgs.length === 0 ? (
@@ -1765,6 +1848,13 @@ const Messaging = () => {
           <CreateGroupModal allUsers={allUsersFromChats} currentUserId={user?._id} onClose={() => setShowCreateGroup(false)} dispatch={dispatch} />
         )}
       </AnimatePresence>
+
+      {/* Action Modals */}
+      <AdvertiseModal isOpen={activeActionModal === 'advertise'} onClose={() => setActiveActionModal(null)} />
+      <BroadcastModal isOpen={activeActionModal === 'broadcast'} onClose={() => setActiveActionModal(null)} />
+      <CommunitiesModal isOpen={activeActionModal === 'communities'} onClose={() => setActiveActionModal(null)} />
+      <ListsModal isOpen={activeActionModal === 'lists'} onClose={() => setActiveActionModal(null)} />
+      <LinkedDevicesModal isOpen={activeActionModal === 'devices'} onClose={() => setActiveActionModal(null)} />
 
       {/* Forward Message Modal */}
       <AnimatePresence>

@@ -7,18 +7,25 @@ import {
   FaBell, FaShieldAlt, FaPalette, FaQuestionCircle, FaLock, FaCamera,
   FaUpload, FaEye, FaEyeSlash, FaReply, FaExternalLinkAlt, FaTrash,
   FaMicrophone, FaPlay, FaPause, FaArrowRight, FaCommentDots, FaEdit,
-  FaChevronRight, FaUserCircle, FaPlus, FaGlobeAmericas,
-  FaLongArrowAltDown, FaLongArrowAltUp, FaVideoSlash,
+  FaChevronRight, FaUserCircle, FaPlus, FaGlobeAmericas, FaUserFriends,
+  FaLongArrowAltDown, FaLongArrowAltUp, FaVideoSlash, FaPaperPlane,
 } from 'react-icons/fa';
 import {
   fetchStories, createStory, viewStory, updateStory, deleteStory,
   fetchCallHistory, createCallRecord,
   fetchStarredMessages,
 } from '../../redux/slices/sidebarSlice';
-import { setActiveChat, archiveChat, toggleStar } from '../../redux/slices/messagingSlice';
+import { setActiveChat, archiveChat, toggleStar, fetchBlockedUsers, blockUser } from '../../redux/slices/messagingSlice';
 import { updateUser, logout } from '../../redux/slices/authSlice';
 import api from '../../services/api';
 import { socket } from '../../services/socket';
+import { AccountPanel } from '../../components/chat/AccountPanels';
+import { PrivacyPanel } from '../../components/chat/PrivacyPanels';
+import { 
+  StorageDataPanel, FacebookInstagramPanel, 
+  AccessibilityPanel, AppLanguagePanel, MetaVerifiedPanel 
+} from '../../components/chat/SettingsModals';
+import ChatSettings from '../../components/chat/ChatSettings';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const getUserName = (u) => u?.fullName || u?.name || u?.username || 'User';
@@ -972,36 +979,23 @@ export const ArchivedPanel = ({ onBack, onOpenChat, user }) => {
   );
 };
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 //  SETTINGS PANEL
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
 export const SettingsPanel = ({ onBack, onNavigate }) => {
   const dispatch = useDispatch();
   const { user } = useSelector(s => s.auth);
-  const { theme } = useSelector(s => s.theme);
+  const { blockedUserDetails } = useSelector(s => s.messaging);
 
-  const [activeModal, setActiveModal] = useState(null); // 'privacy' | 'security' | 'help' | null
+  const [activeModal, setActiveModal] = useState(null);
   const [notifEnabled, setNotifEnabled] = useState(true);
-
-  // Privacy states
-  const [privacySettings, setPrivacySettings] = useState({
-    lastSeen: 'Everyone',
-    profilePhoto: 'Everyone',
-    about: 'Everyone',
-    readReceipts: true,
-    disappearingMessages: 'Off',
-  });
-
-  // Security states
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [securityNotifs, setSecurityNotifs] = useState(true);
-  const [passForm, setPassForm] = useState({ current: '', newPass: '', confirm: '' });
-  const [passMsg, setPassMsg] = useState('');
-
-  // Help states
+  const [expandedFaq, setExpandedFaq] = useState(null);
   const [supportMessage, setSupportMessage] = useState('');
   const [supportSent, setSupportSent] = useState(false);
-  const [expandedFaq, setExpandedFaq] = useState(null);
+
+  useEffect(() => {
+    if (activeModal === 'blockedContacts') dispatch(fetchBlockedUsers());
+  }, [activeModal, dispatch]);
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
@@ -1010,95 +1004,76 @@ export const SettingsPanel = ({ onBack, onNavigate }) => {
     }
   };
 
-  const handlePasswordChange = (e) => {
-    e.preventDefault();
-    if (!passForm.newPass || passForm.newPass !== passForm.confirm) {
-      setPassMsg('New passwords do not match.');
-      return;
-    }
-    setPassMsg('Password updated successfully!');
-    setPassForm({ current: '', newPass: '', confirm: '' });
-    setTimeout(() => setPassMsg(''), 3000);
-  };
-
   const handleSendSupport = (e) => {
     e.preventDefault();
     if (!supportMessage.trim()) return;
     setSupportSent(true);
-    setTimeout(() => {
-      setSupportSent(false);
-      setSupportMessage('');
-    }, 3000);
+    setTimeout(() => { setSupportSent(false); setSupportMessage(''); }, 3000);
   };
 
-  const items = [
+  const settingsItems = [
+    { icon: <span className="text-lg">🤖</span>, bg: 'bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30', label: 'SkillLinked AI', sub: 'Ask me anything — career, messages & more', action: () => onNavigate('metaai') },
+    { icon: <FaShieldAlt size={15} className="text-teal-500" />, bg: 'bg-teal-100 dark:bg-teal-900/30', label: 'Meta Verified', sub: 'Build trust with a verified badge', modal: 'metaVerified' },
+    { icon: <FaUserCircle size={15} className="text-blue-500" />, bg: 'bg-blue-100 dark:bg-blue-900/30', label: 'Account', sub: 'Security notifications, change number', modal: 'account' },
+    { icon: <FaLock size={15} className="text-gray-500" />, bg: 'bg-gray-100 dark:bg-gray-700/50', label: 'Privacy', sub: 'Last seen, blocked contacts', modal: 'privacy' },
+    { icon: <FaGlobeAmericas size={15} className="text-purple-500" />, bg: 'bg-purple-100 dark:bg-purple-900/30', label: 'Lists', sub: 'Manage your chat lists', modal: 'lists' },
+    { icon: <FaCommentDots size={15} className="text-green-500" />, bg: 'bg-green-100 dark:bg-green-900/30', label: 'Chats', sub: 'Theme, wallpapers, chat history', modal: 'chats' },
+    { icon: <FaBell size={15} className="text-yellow-500" />, bg: 'bg-yellow-100 dark:bg-yellow-900/30', label: 'Notifications', sub: notifEnabled ? 'Message, group & call tones' : 'Notifications muted', toggle: notifEnabled, action: () => setNotifEnabled(n => !n) },
+    { icon: <FaArrowRight size={15} className="text-blue-400" />, bg: 'bg-blue-100 dark:bg-blue-900/30', label: 'Storage and data', sub: 'Network usage, auto-download', modal: 'storage' },
+    { icon: <span className="font-extrabold text-sm text-blue-600 dark:text-blue-400">f</span>, bg: 'bg-blue-100 dark:bg-blue-900/30', label: 'Facebook & Instagram', sub: 'Share your SkillLinked status', modal: 'fbig' },
+    { icon: <FaUser size={15} className="text-orange-500" />, bg: 'bg-orange-100 dark:bg-orange-900/30', label: 'Accessibility', sub: 'Font size, high contrast', modal: 'accessibility' },
+    { icon: <FaGlobeAmericas size={15} className="text-indigo-500" />, bg: 'bg-indigo-100 dark:bg-indigo-900/30', label: 'App language', sub: 'English (device language)', modal: 'appLanguage' },
+    { icon: <FaQuestionCircle size={15} className="text-teal-500" />, bg: 'bg-teal-100 dark:bg-teal-900/30', label: 'Help and feedback', sub: 'FAQ, contact us, privacy policy', modal: 'help' },
     {
-      icon: <FaUser size={15} className="text-blue-500" />,
-      label: 'Profile',
-      sub: 'Edit your profile information',
-      onClick: () => onNavigate('profile'),
-    },
-    {
-      icon: <FaBell size={15} className="text-purple-500" />,
-      label: 'Notifications',
-      sub: notifEnabled ? 'Notifications are on' : 'Notifications are off',
-      onClick: () => setNotifEnabled(n => !n),
-      toggle: notifEnabled,
-    },
-    {
-      icon: <FaPalette size={15} className="text-orange-500" />,
-      label: 'Theme',
-      sub: theme === 'dark' ? 'Dark mode' : 'Light mode',
-      onClick: () => dispatch({ type: 'theme/toggleTheme' }),
-    },
-    {
-      icon: <FaShieldAlt size={15} className="text-green-500" />,
-      label: 'Privacy',
-      sub: 'Control who can see your info',
-      onClick: () => setActiveModal('privacy'),
-    },
-    {
-      icon: <FaLock size={15} className="text-red-500" />,
-      label: 'Security',
-      sub: 'Two-step verification & password',
-      onClick: () => setActiveModal('security'),
-    },
-    {
-      icon: <FaQuestionCircle size={15} className="text-teal-500" />,
-      label: 'Help Center',
-      sub: 'FAQs & contact support',
-      onClick: () => setActiveModal('help'),
+      icon: <FaUserFriends size={15} className="text-green-500" />, bg: 'bg-green-100 dark:bg-green-900/30',
+      label: 'Invite a contact', sub: 'Share SkillLinked with friends',
+      action: () => { if (navigator.share) navigator.share({ title: 'Join SkillLinked', text: 'Connect with me on SkillLinked!', url: window.location.origin }); else alert('Share link: ' + window.location.origin); }
     },
   ];
+
+  const renderSubModal = () => {
+    switch (activeModal) {
+      case 'account': return <AccountPanel onBack={() => setActiveModal(null)} />;
+      case 'privacy': return <PrivacyPanel onBack={() => setActiveModal(null)} onOpenBlockedContacts={() => setActiveModal('blockedContacts')} />;
+      case 'storage': return <StorageDataPanel onBack={() => setActiveModal(null)} />;
+      case 'fbig': return <FacebookInstagramPanel onBack={() => setActiveModal(null)} />;
+      case 'accessibility': return <AccessibilityPanel onBack={() => setActiveModal(null)} />;
+      case 'appLanguage': return <AppLanguagePanel onBack={() => setActiveModal(null)} />;
+      case 'metaVerified': return <MetaVerifiedPanel onBack={() => setActiveModal(null)} />;
+      default: return null;
+    }
+  };
+
+  const COMPONENT_MODALS = ['account', 'privacy', 'storage', 'fbig', 'accessibility', 'appLanguage', 'metaVerified'];
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#111b21] relative">
       <PanelHeader title="Settings" onBack={onBack} />
 
-      {/* Profile Quick View */}
-      <div className="px-4 py-4 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-[#1a2329] cursor-pointer hover:bg-blue-100 dark:hover:bg-[#202c33] transition-colors"
+      <div className="px-4 py-3.5 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-[#1a2329] cursor-pointer transition-colors"
         onClick={() => onNavigate('profile')}>
         <Avatar user={user} size="md" />
         <div className="flex-1 min-w-0">
-          <p className="font-bold text-gray-900 dark:text-white truncate">{getUserName(user)}</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">@{user?.username} {user?.headline ? `• ${user.headline}` : ''}</p>
+          <p className="font-bold text-gray-900 dark:text-white text-[17px] truncate">{getUserName(user)}</p>
+          <p className="text-[13px] text-gray-500 dark:text-gray-400 truncate">{user?.headline || user?.bio || 'Hey there! I am using SkillLinked.'}</p>
         </div>
         <FaChevronRight size={13} className="text-gray-400" />
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar py-2">
-        {items.map((item, i) => (
-          <button key={i} onClick={item.onClick}
-            className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors text-left border-b border-gray-50 dark:border-gray-800/40">
-            <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {settingsItems.map((item, i) => (
+          <button key={i}
+            onClick={item.action || (() => item.modal && setActiveModal(item.modal))}
+            className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors text-left border-b border-gray-50 dark:border-gray-800/30">
+            <div className={`w-9 h-9 rounded-full ${item.bg} flex items-center justify-center flex-shrink-0`}>
               {item.icon}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{item.label}</p>
-              <p className="text-xs text-gray-400">{item.sub}</p>
+              <p className="font-semibold text-gray-800 dark:text-gray-200 text-[15px]">{item.label}</p>
+              <p className="text-[13px] text-gray-400 truncate">{item.sub}</p>
             </div>
             {item.toggle !== undefined ? (
-              <div className={`relative w-10 h-5 rounded-full transition-colors ${item.toggle ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+              <div className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${item.toggle ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
                 <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${item.toggle ? 'left-5' : 'left-0.5'}`} />
               </div>
             ) : (
@@ -1107,224 +1082,141 @@ export const SettingsPanel = ({ onBack, onNavigate }) => {
           </button>
         ))}
 
-        {/* Logout */}
         <button onClick={handleLogout}
           className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors text-left mt-2 border-t border-gray-100 dark:border-gray-800">
           <div className="w-9 h-9 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center flex-shrink-0">
             <FaSignOutAlt size={15} className="text-red-500" />
           </div>
           <div className="flex-1">
-            <p className="font-semibold text-red-500 text-sm">Logout</p>
-            <p className="text-xs text-gray-400">Sign out of SkillLinked</p>
+            <p className="font-semibold text-red-500 text-[15px]">Logout</p>
+            <p className="text-[13px] text-gray-400">Sign out of SkillLinked</p>
           </div>
         </button>
       </div>
 
-      {/* 🔒 PRIVACY MODAL */}
       <AnimatePresence>
-        {activeModal === 'privacy' && (
+        {activeModal === 'chats' && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="absolute inset-0 z-30 bg-white dark:bg-[#111b21] flex flex-col">
-            <PanelHeader title="Privacy" onBack={() => setActiveModal(null)} />
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-              
-              <div className="bg-gray-50 dark:bg-[#1a2329] p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
-                <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Who can see my personal info</h4>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Last seen & online</p>
-                      <p className="text-xs text-gray-400">Control who sees when you are active</p>
-                    </div>
-                    <select
-                      value={privacySettings.lastSeen}
-                      onChange={e => setPrivacySettings({ ...privacySettings, lastSeen: e.target.value })}
-                      className="bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200 p-2 rounded-lg outline-none border border-gray-200 dark:border-gray-700"
-                    >
-                      <option>Everyone</option>
-                      <option>My Contacts</option>
-                      <option>Nobody</option>
-                    </select>
-                  </div>
+            <PanelHeader title="Chats" onBack={() => setActiveModal(null)} />
+            <div className="flex-1 overflow-y-auto custom-scrollbar"><ChatSettings /></div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                  <div className="flex justify-between items-center pt-2 border-t border-gray-200/50 dark:border-gray-700/50">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Profile photo</p>
-                      <p className="text-xs text-gray-400">Choose profile picture visibility</p>
-                    </div>
-                    <select
-                      value={privacySettings.profilePhoto}
-                      onChange={e => setPrivacySettings({ ...privacySettings, profilePhoto: e.target.value })}
-                      className="bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200 p-2 rounded-lg outline-none border border-gray-200 dark:border-gray-700"
-                    >
-                      <option>Everyone</option>
-                      <option>My Contacts</option>
-                      <option>Nobody</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 dark:bg-[#1a2329] p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
-                <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Messaging Privacy</h4>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Read receipts</p>
-                    <p className="text-xs text-gray-400">If turned off, you won't send or receive blue double ticks.</p>
-                  </div>
-                  <button
-                    onClick={() => setPrivacySettings(p => ({ ...p, readReceipts: !p.readReceipts }))}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${privacySettings.readReceipts ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-                  >
-                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${privacySettings.readReceipts ? 'left-5' : 'left-0.5'}`} />
-                  </button>
-                </div>
-              </div>
-
+      <AnimatePresence>
+        {activeModal === 'lists' && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute inset-0 z-30 bg-white dark:bg-[#111b21] flex flex-col">
+            <PanelHeader title="Lists" onBack={() => setActiveModal(null)} />
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
+              <FaGlobeAmericas className="text-purple-400 text-5xl" />
+              <p className="font-bold text-gray-900 dark:text-gray-100 text-lg">Organize your chats</p>
+              <p className="text-gray-500 text-sm">Create custom lists to filter your chats.</p>
+              <button className="mt-2 px-6 py-3 bg-purple-500 text-white font-bold rounded-xl hover:bg-purple-600 transition-colors">Create a list</button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 🛡️ SECURITY MODAL */}
-      <AnimatePresence>
-        {activeModal === 'security' && (
-          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="absolute inset-0 z-30 bg-white dark:bg-[#111b21] flex flex-col">
-            <PanelHeader title="Security" onBack={() => setActiveModal(null)} />
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-              
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/40 flex items-center gap-3">
-                <FaLock className="text-blue-500 text-2xl flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">End-to-End Encryption</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Messages and calls are secured with end-to-end encryption.</p>
-                </div>
-              </div>
-
-              {/* Two-step Verification */}
-              <div className="bg-gray-50 dark:bg-[#1a2329] p-4 rounded-2xl border border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Two-Step Verification</p>
-                  <p className="text-xs text-gray-400">Add extra security requiring a PIN when logging in.</p>
-                </div>
-                <button
-                  onClick={() => setTwoFactorEnabled(!twoFactorEnabled)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-                    twoFactorEnabled ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
-                  }`}
-                >
-                  {twoFactorEnabled ? 'Enabled' : 'Enable'}
-                </button>
-              </div>
-
-              {/* Change Password */}
-              <form onSubmit={handlePasswordChange} className="bg-gray-50 dark:bg-[#1a2329] p-4 rounded-2xl border border-gray-100 dark:border-gray-800 space-y-3">
-                <h4 className="text-xs font-bold text-gray-400 uppercase">Change Password</h4>
-                {passMsg && <p className="text-xs font-semibold text-green-500">{passMsg}</p>}
-                <input
-                  type="password"
-                  placeholder="Current Password"
-                  value={passForm.current}
-                  onChange={e => setPassForm({ ...passForm, current: e.target.value })}
-                  className="w-full p-2.5 rounded-xl bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200 outline-none border border-gray-200 dark:border-gray-700"
-                />
-                <input
-                  type="password"
-                  placeholder="New Password"
-                  value={passForm.newPass}
-                  onChange={e => setPassForm({ ...passForm, newPass: e.target.value })}
-                  className="w-full p-2.5 rounded-xl bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200 outline-none border border-gray-200 dark:border-gray-700"
-                />
-                <input
-                  type="password"
-                  placeholder="Confirm New Password"
-                  value={passForm.confirm}
-                  onChange={e => setPassForm({ ...passForm, confirm: e.target.value })}
-                  className="w-full p-2.5 rounded-xl bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200 outline-none border border-gray-200 dark:border-gray-700"
-                />
-                <button
-                  type="submit"
-                  className="w-full py-2.5 rounded-xl bg-blue-500 text-white font-semibold text-xs hover:bg-blue-600 transition-colors"
-                >
-                  Update Password
-                </button>
-              </form>
-
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ❓ HELP CENTER MODAL */}
       <AnimatePresence>
         {activeModal === 'help' && (
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="absolute inset-0 z-30 bg-white dark:bg-[#111b21] flex flex-col">
-            <PanelHeader title="Help Center" onBack={() => setActiveModal(null)} />
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
-              
-              <div className="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-2xl border border-teal-100 dark:border-teal-800/40 flex items-center gap-3">
-                <FaQuestionCircle className="text-teal-500 text-2xl flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">How can we help?</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Search FAQs or reach out to our support team.</p>
-                </div>
-              </div>
-
-              {/* FAQs */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-gray-400 uppercase px-1">Frequently Asked Questions</h4>
+            <PanelHeader title="Help and feedback" onBack={() => setActiveModal(null)} />
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {[
+                { label: 'Help Centre', sub: 'Get help or contact us' },
+                { label: 'Contact us', sub: 'Submit a support request' },
+                { label: 'Terms and Privacy Policy', sub: 'Read our terms and policies' },
+                { label: 'App info', sub: 'Version 1.0.0' },
+              ].map((item, i) => (
+                <button key={i} className="w-full flex items-center justify-between px-4 py-4 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors text-left border-b border-gray-50 dark:border-gray-800/40">
+                  <div>
+                    <p className="font-semibold text-[15px] text-gray-800 dark:text-gray-200">{item.label}</p>
+                    <p className="text-[13px] text-gray-400">{item.sub}</p>
+                  </div>
+                  <FaChevronRight size={12} className="text-gray-300" />
+                </button>
+              ))}
+              <div className="p-4 space-y-3">
+                <h4 className="text-xs font-bold text-gray-400 uppercase">Frequently Asked Questions</h4>
                 {[
-                  { q: 'How do I edit or delete a message?', a: 'Hover over your message and click the options dropdown to Edit or Delete for Everyone.' },
-                  { q: 'How do audio and video calls work?', a: 'Click the Phone or Camera icons at the top right of any chat room to start a 1-on-1 or group call.' },
-                  { q: 'How do 24-hour Status updates work?', a: 'Navigate to Status tab to share images, videos or text updates that automatically expire after 24 hours.' },
+                  { q: 'How do I edit or delete a message?', a: 'Hover over your message and click the options dropdown.' },
+                  { q: 'How do audio and video calls work?', a: 'Click the Phone or Camera icons at the top right of any chat.' },
+                  { q: 'How do 24-hour Status updates work?', a: 'Navigate to Status tab to share updates that expire after 24 hours.' },
                 ].map((faq, idx) => (
                   <div key={idx} className="bg-gray-50 dark:bg-[#1a2329] rounded-xl overflow-hidden border border-gray-100 dark:border-gray-800">
-                    <button
-                      onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
-                      className="w-full flex justify-between items-center p-3 text-left font-medium text-xs text-gray-800 dark:text-gray-200"
-                    >
+                    <button onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
+                      className="w-full flex justify-between items-center p-3 text-left font-medium text-[13px] text-gray-800 dark:text-gray-200">
                       <span>{faq.q}</span>
                       <FaChevronRight size={10} className={`transform transition-transform ${expandedFaq === idx ? 'rotate-90 text-blue-500' : 'text-gray-400'}`} />
                     </button>
                     {expandedFaq === idx && (
-                      <div className="px-3 pb-3 pt-1 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800/60">
-                        {faq.a}
-                      </div>
+                      <div className="px-3 pb-3 pt-1 text-[13px] text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800/60">{faq.a}</div>
                     )}
                   </div>
                 ))}
               </div>
-
-              {/* Contact Support Form */}
-              <form onSubmit={handleSendSupport} className="bg-gray-50 dark:bg-[#1a2329] p-4 rounded-2xl border border-gray-100 dark:border-gray-800 space-y-3">
+              <form onSubmit={handleSendSupport} className="p-4 space-y-3">
                 <h4 className="text-xs font-bold text-gray-400 uppercase">Contact Support</h4>
-                {supportSent && <p className="text-xs font-semibold text-teal-500">Thank you! Support ticket submitted successfully.</p>}
-                <textarea
-                  placeholder="Describe your issue or feedback..."
-                  value={supportMessage}
-                  onChange={e => setSupportMessage(e.target.value)}
-                  rows={3}
-                  className="w-full p-2.5 rounded-xl bg-white dark:bg-gray-800 text-xs text-gray-800 dark:text-gray-200 outline-none border border-gray-200 dark:border-gray-700 resize-none"
-                />
-                <button
-                  type="submit"
-                  disabled={!supportMessage.trim()}
-                  className="w-full py-2.5 rounded-xl bg-teal-500 text-white font-semibold text-xs hover:bg-teal-600 disabled:opacity-50 transition-colors"
-                >
-                  Submit Ticket
-                </button>
+                {supportSent && <p className="text-xs font-semibold text-teal-500">Thank you! Ticket submitted successfully.</p>}
+                <textarea placeholder="Describe your issue or feedback..." value={supportMessage} onChange={e => setSupportMessage(e.target.value)}
+                  rows={3} className="w-full p-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-[13px] text-gray-800 dark:text-gray-200 outline-none resize-none" />
+                <button type="submit" disabled={!supportMessage.trim()}
+                  className="w-full py-2.5 rounded-xl bg-teal-500 text-white font-semibold text-sm hover:bg-teal-600 disabled:opacity-50 transition-colors">Submit Ticket</button>
               </form>
-
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {activeModal === 'blockedContacts' && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute inset-0 z-50 bg-white dark:bg-[#111b21] flex flex-col">
+            <PanelHeader title="Blocked contacts" onBack={() => setActiveModal('privacy')} />
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {!blockedUserDetails?.length ? (
+                <div className="text-center py-16 px-6">
+                  <div className="text-5xl mb-4">&#128683;</div>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">No blocked contacts</p>
+                </div>
+              ) : (
+                <div className="py-2">
+                  {blockedUserDetails.map(u => (
+                    <div key={u._id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors border-b border-gray-50 dark:border-gray-800/40">
+                      <Avatar user={u} size="md" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 dark:text-gray-100 text-[15px] truncate">{getUserName(u)}</p>
+                        <p className="text-[13px] text-gray-400 truncate">{u.headline || '@' + u.username}</p>
+                      </div>
+                      <button onClick={() => { if (window.confirm('Unblock ' + getUserName(u) + '?')) dispatch(blockUser(u._id)); }}
+                        className="px-3 py-1.5 rounded-xl bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-semibold hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">
+                        Unblock
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {COMPONENT_MODALS.includes(activeModal) && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute inset-0 z-30">
+            {renderSubModal()}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
+
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  PROFILE PANEL
@@ -1469,3 +1361,201 @@ export const ProfilePanel = ({ onBack }) => {
     </div>
   );
 };
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  META AI PANEL  (SkillLinked AI — like WhatsApp's Meta AI)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export const MetaAIPanel = ({ onBack }) => {
+  const { user } = useSelector(s => s.auth);
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: `Hi ${user?.fullName?.split(' ')[0] || 'there'}! 👋 I'm **SkillLinked AI** — your intelligent assistant.\n\nI can help you with:\n• Career advice & job searching\n• Writing professional messages\n• Resume & profile tips\n• General questions & research\n\nWhat can I help you with today?`,
+      time: new Date(),
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const suggestions = [
+    'Help me write a cover letter',
+    'How to negotiate salary?',
+    'Tips for LinkedIn profile',
+    'Prepare for an interview',
+  ];
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async (text) => {
+    const msg = text || input.trim();
+    if (!msg || isLoading) return;
+
+    setInput('');
+    const userMsg = { role: 'user', content: msg, time: new Date() };
+    setMessages(prev => [...prev, userMsg]);
+    setIsLoading(true);
+
+    try {
+      const history = messages.map(m => ({ role: m.role, content: m.content }));
+      const res = await api.post('/ai/chat', { message: msg, history });
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: res.reply || 'Sorry, I could not process that.', time: new Date() },
+      ]);
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: "I'm having trouble connecting right now. Please try again shortly! 🙏",
+          time: new Date(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const renderContent = (text) => {
+    // Bold: **text**
+    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((p, i) =>
+      p.startsWith('**') && p.endsWith('**')
+        ? <strong key={i} className="font-semibold">{p.slice(2, -2)}</strong>
+        : <span key={i}>{p}</span>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-white dark:bg-[#111b21]">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-[#0d1f2d] to-[#1a3a5c] flex-shrink-0">
+        <button
+          onClick={onBack}
+          className="p-1.5 rounded-full text-white/70 hover:bg-white/10 transition-colors"
+        >
+          <FaArrowLeft size={15} />
+        </button>
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg flex-shrink-0">
+          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
+          </svg>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-white">SkillLinked AI</p>
+          <p className="text-[11px] text-white/60">Your intelligent assistant</p>
+        </div>
+        <div className="flex items-center gap-1 px-2 py-1 bg-white/10 rounded-full">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-[10px] text-white/80 font-medium">Online</span>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 bg-[#f0f2f5] dark:bg-[#0b1418]">
+        {/* Decorative top banner */}
+        <div className="flex flex-col items-center py-4 text-center">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-xl mb-3">
+            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
+              <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>
+            </svg>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px] leading-relaxed">
+            SkillLinked AI helps you grow professionally. Your chats are private.
+          </p>
+        </div>
+
+        {messages.map((msg, idx) => (
+          <div key={idx} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {msg.role === 'assistant' && (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 mt-1 shadow-md">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
+                  <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>
+                </svg>
+              </div>
+            )}
+            <div className={`max-w-[78%] ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
+              <div
+                className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                  msg.role === 'user'
+                    ? 'bg-blue-600 text-white rounded-br-sm shadow-sm'
+                    : 'bg-white dark:bg-[#1f2c34] text-gray-900 dark:text-gray-100 rounded-bl-sm shadow-sm border border-gray-100 dark:border-gray-700'
+                }`}
+              >
+                {renderContent(msg.content)}
+              </div>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 px-1">
+                {msg.time ? new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+              </span>
+            </div>
+            {msg.role === 'user' && (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center flex-shrink-0 mt-1">
+                <FaUser size={12} className="text-white" />
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Loading bubble */}
+        {isLoading && (
+          <div className="flex gap-2 justify-start">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 shadow-md">
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
+                <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>
+              </svg>
+            </div>
+            <div className="bg-white dark:bg-[#1f2c34] border border-gray-100 dark:border-gray-700 px-4 py-3 rounded-2xl rounded-bl-sm shadow-sm">
+              <div className="flex gap-1 items-center">
+                <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Suggestion Chips */}
+      {messages.length <= 1 && (
+        <div className="px-3 py-2 flex gap-2 overflow-x-auto bg-[#f0f2f5] dark:bg-[#0b1418] no-scrollbar flex-shrink-0">
+          {suggestions.map((s, i) => (
+            <button
+              key={i}
+              onClick={() => sendMessage(s)}
+              className="flex-shrink-0 px-3 py-1.5 bg-white dark:bg-[#1f2c34] border border-gray-200 dark:border-gray-700 rounded-full text-xs text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 transition-all whitespace-nowrap"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="px-3 py-3 bg-white dark:bg-[#1f2c34] border-t border-gray-100 dark:border-gray-700 flex items-center gap-2 flex-shrink-0">
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+          placeholder="Ask SkillLinked AI anything..."
+          disabled={isLoading}
+          className="flex-1 bg-gray-100 dark:bg-[#2a3942] text-gray-900 dark:text-gray-100 text-sm px-4 py-2.5 rounded-full outline-none placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-60"
+        />
+        <button
+          onClick={() => sendMessage()}
+          disabled={!input.trim() || isLoading}
+          className="w-10 h-10 flex-shrink-0 flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white rounded-full shadow-md hover:opacity-90 transition-opacity disabled:opacity-40"
+        >
+          <FaPaperPlane size={13} />
+        </button>
+      </div>
+    </div>
+  );
+};
+

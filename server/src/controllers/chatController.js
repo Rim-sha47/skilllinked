@@ -153,6 +153,23 @@ exports.blockUser = async (req, res) => {
   }
 };
 
+// @desc    Get blocked users list
+// @route   GET /api/chats/blocked-users
+// @access  Private
+exports.getBlockedUsers = async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id).populate(
+      'blockedUsers',
+      'fullName username profilePicture headline'
+    );
+    if (!currentUser) return res.status(404).json({ message: 'User not found' });
+
+    res.json(currentUser.blockedUsers);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
 // @desc    Delete (hide) a chat for current user
 // @route   DELETE /api/chats/:chatId
 // @access  Private

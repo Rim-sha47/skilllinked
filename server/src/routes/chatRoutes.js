@@ -6,6 +6,7 @@ const {
   muteChat,
   archiveChat,
   blockUser,
+  getBlockedUsers,
   deleteChat,
   createGroupChat,
   renameGroup,
@@ -29,6 +30,7 @@ router.delete('/:chatId', protect, deleteChat);
 
 // Block / Unblock a user
 router.put('/block/:userId', protect, blockUser);
+router.get('/blocked-users', protect, getBlockedUsers);
 
 // Group chat management
 router.post('/group', protect, createGroupChat);

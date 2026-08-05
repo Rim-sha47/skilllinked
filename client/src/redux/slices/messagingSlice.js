@@ -87,6 +87,11 @@ export const blockUser = createAsyncThunk('messaging/blockUser', async (userId, 
   catch (err) { return rejectWithValue(err.message); }
 });
 
+export const fetchBlockedUsers = createAsyncThunk('messaging/fetchBlockedUsers', async (_, { rejectWithValue }) => {
+  try { return await api.get(`/chats/blocked-users`); }
+  catch (err) { return rejectWithValue(err.message); }
+});
+
 export const hideChat = createAsyncThunk('messaging/hideChat', async (chatId, { rejectWithValue }) => {
   try { await api.delete(`/chats/${chatId}`); return chatId; }
   catch (err) { return rejectWithValue(err.message); }
@@ -148,9 +153,10 @@ const messagingSlice = createSlice({
     isLoadingChats: false,
     isLoadingMessages: false,
     isSending: false,
+    blockedUsers: [],
+    blockedUserDetails: [],
     error: null,
     replyingTo: null,
-    blockedUsers: [],       // list of userId strings the current user has blocked
     currentUserId: null,
     pagination: {},         // keyed by chatId { page: 1, hasMore: false }
   },
@@ -338,6 +344,15 @@ const messagingSlice = createSlice({
     // blockUser
     builder.addCase(blockUser.fulfilled, (state, action) => {
       state.blockedUsers = action.payload.blockedUsers?.map(String) || [];
+      // Also optimistic update of blockedUserDetails if it's unblocking
+      if (!action.payload.isBlocked) {
+        state.blockedUserDetails = state.blockedUserDetails.filter(u => action.payload.blockedUsers.map(String).includes(u._id));
+      }
+    });
+
+    // fetchBlockedUsers
+    builder.addCase(fetchBlockedUsers.fulfilled, (state, action) => {
+      state.blockedUserDetails = action.payload;
     });
 
     // hideChat

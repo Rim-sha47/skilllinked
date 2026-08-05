@@ -73,6 +73,9 @@ app.use('/api/ai', require('./src/routes/aiRoutes'));
 app.use('/api/admin', require('./src/routes/adminRoutes'));
 app.use('/api/stories', require('./src/routes/storyRoutes'));
 app.use('/api/calls', require('./src/routes/callRoutes'));
+app.use('/api/channels', require('./src/routes/channelRoutes'));
+app.use('/api/groups', require('./src/routes/groupRoutes'));
+
 
 app.get('/', (req, res) => {
   res.send('SkillLinked API is running...');

@@ -10,6 +10,14 @@ const postSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Company',
     },
+    group: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Group',
+    },
+    channel: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Channel',
+    },
     text: {
       type: String,
       default: '',

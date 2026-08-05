@@ -9,7 +9,9 @@ import messagingReducer    from './slices/messagingSlice';
 import companyReducer      from './slices/companySlice';
 import feedReducer         from './slices/feedSlice';
 import sidebarReducer      from './slices/sidebarSlice';
-
+import chatSettingsReducer from './slices/chatSettingsSlice';
+import channelsReducer     from './slices/channelsSlice';
+import aiReducer           from './slices/aiSlice';
 const store = configureStore({
   reducer: {
     auth:          authReducer,
@@ -22,6 +24,9 @@ const store = configureStore({
     companies:     companyReducer,
     feed:          feedReducer,
     sidebar:       sidebarReducer,
+    chatSettings:  chatSettingsReducer,
+    channels:      channelsReducer,
+    ai:            aiReducer,
   },
 });
 

@@ -530,3 +530,66 @@ exports.removeCoverPhoto = async (req, res) => {
   }
 };
 
+// @desc    Update chat preferences
+// @route   PUT /api/profiles/chat-preferences
+// @access  Private
+exports.updateChatPreferences = async (req, res) => {
+  try {
+    const { global, perChat } = req.body;
+    
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.chatPreferences) {
+      user.chatPreferences = { global: {}, perChat: [] };
+    }
+
+    if (global) {
+      user.chatPreferences.global = { ...user.chatPreferences.global, ...global };
+    }
+
+    if (perChat) {
+      // perChat is an object with chatId and settings
+      const { chatId, ...settings } = perChat;
+      if (chatId) {
+        const existingIndex = user.chatPreferences.perChat.findIndex(
+          (pc) => pc.chatId && pc.chatId.toString() === chatId.toString()
+        );
+
+        if (existingIndex !== -1) {
+          user.chatPreferences.perChat[existingIndex] = {
+            ...user.chatPreferences.perChat[existingIndex],
+            ...settings
+          };
+        } else {
+          user.chatPreferences.perChat.push({ chatId, ...settings });
+        }
+      }
+    }
+
+    await user.save();
+    res.json(user.chatPreferences);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Upload chat wallpaper
+// @route   POST /api/profiles/chat-preferences/wallpaper
+// @access  Private
+exports.uploadChatWallpaper = async (req, res) => {
+  try {
+    const getFileUrl = require('../utils/getFileUrl');
+    const imageUrl = getFileUrl(req);
+    
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    res.json({ wallpaperUrl: imageUrl });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
