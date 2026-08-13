@@ -52,3 +52,17 @@ pnpm-lock.yaml
 *.local
 .cache/
 .parcel-cache/
+
+# ─── Vite Cache ────────────────────────────────────────────
+client/node_modules/.vite/
+
+# ─── PowerShell Scripts (dev-only, not needed in repo) ─────
+*.ps1
+
+# ─── Agent / AI Config ────────────────────────────────────
+.agents/
+.gemini/
+
+# ─── Client .env (Google Client ID etc) ───────────────────
+client/.env
+client/.env.*

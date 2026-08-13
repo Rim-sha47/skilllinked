@@ -29,13 +29,51 @@ export const deleteStory = createAsyncThunk('sidebar/deleteStory', async (id, { 
   catch (err) { return rejectWithValue(err.message); }
 });
 
-export const fetchCallHistory = createAsyncThunk('sidebar/fetchCallHistory', async (_, { rejectWithValue }) => {
-  try { return await api.get('/calls'); }
-  catch (err) { return rejectWithValue(err.message); }
+export const fetchCallHistory = createAsyncThunk('sidebar/fetchCallHistory', async (params, { rejectWithValue }) => {
+  try {
+    const queryString = params ? new URLSearchParams(params).toString() : '';
+    return await api.get(`/calls${queryString ? `?${queryString}` : ''}`);
+  } catch (err) { return rejectWithValue(err.message); }
 });
 
 export const createCallRecord = createAsyncThunk('sidebar/createCallRecord', async (data, { rejectWithValue }) => {
   try { return await api.post('/calls', data); }
+  catch (err) { return rejectWithValue(err.message); }
+});
+
+export const updateCallRecord = createAsyncThunk('sidebar/updateCallRecord', async ({ callId, status, duration, quality, networkStatus }, { rejectWithValue }) => {
+  try { return await api.put(`/calls/${callId}`, { status, duration, quality, networkStatus }); }
+  catch (err) { return rejectWithValue(err.message); }
+});
+
+export const deleteCallRecord = createAsyncThunk('sidebar/deleteCallRecord', async (callId, { rejectWithValue }) => {
+  try {
+    await api.delete(`/calls/${callId}`);
+    return callId;
+  } catch (err) { return rejectWithValue(err.message); }
+});
+
+export const deleteMultipleCalls = createAsyncThunk('sidebar/deleteMultipleCalls', async (callIds, { rejectWithValue }) => {
+  try {
+    await api.post('/calls/bulk-delete', { callIds });
+    return callIds;
+  } catch (err) { return rejectWithValue(err.message); }
+});
+
+export const clearCallHistory = createAsyncThunk('sidebar/clearCallHistory', async (_, { rejectWithValue }) => {
+  try {
+    await api.delete('/calls/clear/all');
+    return true;
+  } catch (err) { return rejectWithValue(err.message); }
+});
+
+export const togglePinCall = createAsyncThunk('sidebar/togglePinCall', async (callId, { rejectWithValue }) => {
+  try { return await api.put(`/calls/${callId}/pin`); }
+  catch (err) { return rejectWithValue(err.message); }
+});
+
+export const toggleArchiveCall = createAsyncThunk('sidebar/toggleArchiveCall', async (callId, { rejectWithValue }) => {
+  try { return await api.put(`/calls/${callId}/archive`); }
   catch (err) { return rejectWithValue(err.message); }
 });
 
@@ -102,6 +140,34 @@ const sidebarSlice = createSlice({
       .addCase(fetchCallHistory.rejected, (state) => { state.isLoadingCalls = false; })
       .addCase(createCallRecord.fulfilled, (state, action) => {
         if (action.payload) state.calls.unshift(action.payload);
+      })
+      .addCase(updateCallRecord.fulfilled, (state, action) => {
+        if (action.payload) {
+          const idx = state.calls.findIndex(c => c._id === action.payload._id);
+          if (idx !== -1) state.calls[idx] = action.payload;
+        }
+      })
+      .addCase(deleteCallRecord.fulfilled, (state, action) => {
+        state.calls = state.calls.filter(c => c._id !== action.payload);
+      })
+      .addCase(deleteMultipleCalls.fulfilled, (state, action) => {
+        const ids = new Set(action.payload);
+        state.calls = state.calls.filter(c => !ids.has(c._id));
+      })
+      .addCase(clearCallHistory.fulfilled, (state) => {
+        state.calls = [];
+      })
+      .addCase(togglePinCall.fulfilled, (state, action) => {
+        if (action.payload) {
+          const idx = state.calls.findIndex(c => c._id === action.payload._id);
+          if (idx !== -1) state.calls[idx] = action.payload;
+        }
+      })
+      .addCase(toggleArchiveCall.fulfilled, (state, action) => {
+        if (action.payload) {
+          const idx = state.calls.findIndex(c => c._id === action.payload._id);
+          if (idx !== -1) state.calls[idx] = action.payload;
+        }
       })
       // Starred
       .addCase(fetchStarredMessages.pending, (state) => { state.isLoadingStarred = true; })

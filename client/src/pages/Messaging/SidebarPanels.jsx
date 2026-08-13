@@ -12,7 +12,7 @@ import {
 } from 'react-icons/fa';
 import {
   fetchStories, createStory, viewStory, updateStory, deleteStory,
-  fetchCallHistory, createCallRecord,
+  fetchCallHistory, createCallRecord, deleteCallRecord, deleteMultipleCalls, clearCallHistory, togglePinCall, toggleArchiveCall,
   fetchStarredMessages,
 } from '../../redux/slices/sidebarSlice';
 import { setActiveChat, archiveChat, toggleStar, fetchBlockedUsers, blockUser } from '../../redux/slices/messagingSlice';
@@ -26,6 +26,7 @@ import {
   AccessibilityPanel, AppLanguagePanel, MetaVerifiedPanel 
 } from '../../components/chat/SettingsModals';
 import ChatSettings from '../../components/chat/ChatSettings';
+import { CallDetailsModal } from './CallDetailsModal';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const getUserName = (u) => u?.fullName || u?.name || u?.username || 'User';
@@ -618,9 +619,14 @@ export const CallsPanel = ({ onBack, onCall, onOpenChat }) => {
   const dispatch = useDispatch();
   const { user } = useSelector(s => s.auth);
   const { calls, isLoadingCalls } = useSelector(s => s.sidebar);
-  const [activeFilter, setActiveFilter] = useState('all'); // all | missed
 
-  // Refresh call history on mount & when new call ends via socket
+  const [activeFilter, setActiveFilter] = useState('all'); // all | missed | incoming | outgoing | voice | video
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCall, setSelectedCall] = useState(null); // for CallDetailsModal
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // Refresh call history on mount & on socket events
   useEffect(() => { dispatch(fetchCallHistory()); }, [dispatch]);
   useEffect(() => {
     const refresh = () => dispatch(fetchCallHistory());
@@ -632,7 +638,6 @@ export const CallsPanel = ({ onBack, onCall, onOpenChat }) => {
     };
   }, [dispatch]);
 
-  // ─── Duration formatter ────────────────────────────
   const formatDuration = (seconds) => {
     if (!seconds || seconds === 0) return null;
     if (seconds < 60) return `${seconds}s`;
@@ -641,71 +646,65 @@ export const CallsPanel = ({ onBack, onCall, onOpenChat }) => {
     return `${m}:${s.toString().padStart(2, '0')}m`;
   };
 
-  // ─── Call meta helper (WhatsApp style) ────────────
   const getCallMeta = (call) => {
     const myId = user?._id?.toString();
     const callerId = (call.caller?._id || call.caller)?.toString();
     const isMeCaller = callerId === myId;
     const isVideo = call.type === 'video';
-    const isMissed = call.status === 'missed' || call.status === 'rejected';
+    const isMissed = call.status === 'missed' || call.status === 'rejected' || call.status === 'declined';
     const isCancelled = call.status === 'cancelled';
 
-    // Direction arrow
     if (isMissed && !isMeCaller) {
-      // Incoming missed — red arrow pointing toward bottom-left
       return {
         dirIcon: (
-          <span className="inline-flex items-center justify-center w-5 h-5">
-            <FaLongArrowAltDown size={12} style={{ transform: 'rotate(-45deg)' }} />
+          <span className="inline-flex items-center justify-center w-4 h-4">
+            <FaLongArrowAltDown size={11} style={{ transform: 'rotate(-45deg)' }} />
           </span>
         ),
-        typeIcon: isVideo ? <FaVideo size={13} /> : <FaPhone size={13} />,
+        typeIcon: isVideo ? <FaVideo size={12} /> : <FaPhone size={12} />,
         dirColor: 'text-red-500',
         bgColor: 'bg-red-50 dark:bg-red-900/20',
         label: 'Missed',
         labelColor: 'text-red-500 font-semibold',
       };
     } else if (isCancelled && isMeCaller) {
-      // Outgoing cancelled — orange
       return {
         dirIcon: (
-          <span className="inline-flex items-center justify-center w-5 h-5">
-            <FaLongArrowAltUp size={12} style={{ transform: 'rotate(45deg)' }} />
+          <span className="inline-flex items-center justify-center w-4 h-4">
+            <FaLongArrowAltUp size={11} style={{ transform: 'rotate(45deg)' }} />
           </span>
         ),
-        typeIcon: isVideo ? <FaVideo size={13} /> : <FaPhone size={13} />,
+        typeIcon: isVideo ? <FaVideo size={12} /> : <FaPhone size={12} />,
         dirColor: 'text-orange-500',
         bgColor: 'bg-orange-50 dark:bg-orange-900/20',
         label: 'Cancelled',
         labelColor: 'text-orange-500',
       };
     } else if (isMeCaller) {
-      // Outgoing — blue up-right arrow
       return {
         dirIcon: (
-          <span className="inline-flex items-center justify-center w-5 h-5">
-            <FaLongArrowAltUp size={12} style={{ transform: 'rotate(45deg)' }} />
+          <span className="inline-flex items-center justify-center w-4 h-4">
+            <FaLongArrowAltUp size={11} style={{ transform: 'rotate(45deg)' }} />
           </span>
         ),
-        typeIcon: isVideo ? <FaVideo size={13} /> : <FaPhone size={13} />,
+        typeIcon: isVideo ? <FaVideo size={12} /> : <FaPhone size={12} />,
         dirColor: 'text-blue-500',
         bgColor: 'bg-blue-50 dark:bg-blue-900/20',
         label: 'Outgoing',
         labelColor: 'text-blue-500',
       };
     } else {
-      // Incoming — green down-left arrow
       return {
         dirIcon: (
-          <span className="inline-flex items-center justify-center w-5 h-5">
-            <FaLongArrowAltDown size={12} style={{ transform: 'rotate(-45deg)' }} />
+          <span className="inline-flex items-center justify-center w-4 h-4">
+            <FaLongArrowAltDown size={11} style={{ transform: 'rotate(-45deg)' }} />
           </span>
         ),
-        typeIcon: isVideo ? <FaVideo size={13} /> : <FaPhone size={13} />,
-        dirColor: 'text-green-500',
-        bgColor: 'bg-green-50 dark:bg-green-900/20',
+        typeIcon: isVideo ? <FaVideo size={12} /> : <FaPhone size={12} />,
+        dirColor: 'text-emerald-500',
+        bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
         label: 'Incoming',
-        labelColor: 'text-green-500',
+        labelColor: 'text-emerald-500',
       };
     }
   };
@@ -716,129 +715,266 @@ export const CallsPanel = ({ onBack, onCall, onOpenChat }) => {
     return callerId === myId ? call.receiver : call.caller;
   };
 
-  const filteredCalls = activeFilter === 'missed'
-    ? calls.filter(c => c.status === 'missed' || c.status === 'rejected')
-    : calls;
+  // Filter & Search Logic
+  const filteredCalls = calls.filter((call) => {
+    const myId = user?._id?.toString();
+    const callerId = (call.caller?._id || call.caller)?.toString();
+    const isMe = callerId === myId;
+
+    // Category Filter
+    if (activeFilter === 'missed' && !(call.status === 'missed' || call.status === 'rejected' || call.status === 'declined')) return false;
+    if (activeFilter === 'incoming' && isMe) return false;
+    if (activeFilter === 'outgoing' && !isMe) return false;
+    if (activeFilter === 'voice' && call.type !== 'voice') return false;
+    if (activeFilter === 'video' && call.type !== 'video') return false;
+
+    // Search Query Filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const other = otherParty(call);
+      const name = (other?.fullName || other?.name || '').toLowerCase();
+      const username = (other?.username || '').toLowerCase();
+      const dateStr = new Date(call.createdAt).toLocaleDateString().toLowerCase();
+      return name.includes(q) || username.includes(q) || dateStr.includes(q);
+    }
+    return true;
+  });
 
   const missedCount = calls.filter(c => {
     const myId = user?._id?.toString();
     const callerId = (c.caller?._id || c.caller)?.toString();
-    return callerId !== myId && (c.status === 'missed' || c.status === 'rejected');
+    return callerId !== myId && (c.status === 'missed' || c.status === 'rejected' || c.status === 'declined');
   }).length;
+
+  const toggleSelectCall = (id) => {
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (window.confirm(`Delete ${selectedIds.length} call logs?`)) {
+      dispatch(deleteMultipleCalls(selectedIds));
+      setSelectedIds([]);
+      setSelectMode(false);
+    }
+  };
+
+  const handleClearAll = () => {
+    if (window.confirm('Clear your entire call history? Chat messages will not be deleted.')) {
+      dispatch(clearCallHistory());
+    }
+  };
+
+  const handleDeleteSingle = (callId) => {
+    if (window.confirm('Delete this call log?')) {
+      dispatch(deleteCallRecord(callId));
+      if (selectedCall?._id === callId) setSelectedCall(null);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#111b21]">
-      <PanelHeader title="Calls" onBack={onBack} />
+      <PanelHeader
+        title="Calls"
+        onBack={onBack}
+        action={
+          <div className="flex items-center gap-2">
+            {selectMode ? (
+              <>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={selectedIds.length === 0}
+                  className="px-2.5 py-1 text-xs font-bold bg-red-500 text-white rounded-lg disabled:opacity-50"
+                >
+                  Delete ({selectedIds.length})
+                </button>
+                <button
+                  onClick={() => { setSelectMode(false); setSelectedIds([]); }}
+                  className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-white text-xs font-medium"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                {calls.length > 0 && (
+                  <button
+                    onClick={() => setSelectMode(true)}
+                    className="p-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title="Select Calls"
+                  >
+                    Select
+                  </button>
+                )}
+                {calls.length > 0 && (
+                  <button
+                    onClick={handleClearAll}
+                    className="p-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    title="Clear All History"
+                  >
+                    <FaTrash size={13} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        }
+      />
 
-      {/* Filter tabs */}
-      <div className="flex border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-[#111b21] flex-shrink-0">
-        {['all', 'missed'].map(f => (
+      {/* Search Input */}
+      <div className="px-4 pt-2.5 pb-2 bg-white dark:bg-[#111b21] flex-shrink-0">
+        <div className="relative">
+          <FaSearch size={12} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search calls by name, username, or date..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-gray-100 dark:bg-[#202c33] text-gray-800 dark:text-gray-100 outline-none border border-transparent focus:border-emerald-500"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <FaTimes size={11} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Filter Tabs Bar (WhatsApp Style) */}
+      <div className="flex overflow-x-auto custom-scrollbar border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-[#111b21] flex-shrink-0 px-2 py-1 gap-1">
+        {[
+          { id: 'all', label: 'All' },
+          { id: 'missed', label: 'Missed', badge: missedCount },
+          { id: 'incoming', label: 'Incoming' },
+          { id: 'outgoing', label: 'Outgoing' },
+          { id: 'voice', label: 'Voice' },
+          { id: 'video', label: 'Video' },
+        ].map(f => (
           <button
-            key={f}
-            onClick={() => setActiveFilter(f)}
-            className={`flex-1 py-2.5 text-[13px] font-semibold capitalize transition-colors relative ${
-              activeFilter === f
-                ? 'text-blue-500'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            key={f.id}
+            onClick={() => setActiveFilter(f.id)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              activeFilter === f.id
+                ? 'bg-emerald-500 text-white font-bold'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
-            {f === 'missed' && missedCount > 0 ? (
-              <span className="flex items-center justify-center gap-1.5">
-                Missed
-                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                  {missedCount > 9 ? '9+' : missedCount}
-                </span>
+            {f.label}
+            {f.badge > 0 && (
+              <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.2 ${activeFilter === f.id ? 'bg-white text-emerald-600' : 'bg-red-500 text-white'}`}>
+                {f.badge > 9 ? '9+' : f.badge}
               </span>
-            ) : f === 'all' ? 'All Calls' : 'Missed'}
-            {activeFilter === f && (
-              <div className="absolute bottom-0 left-4 right-4 h-0.5 bg-blue-500 rounded-full" />
             )}
           </button>
         ))}
       </div>
 
+      {/* Call History List */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {isLoadingCalls ? <Spinner /> : filteredCalls.length === 0 ? (
           <div className="text-center py-16 px-6">
             <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mx-auto mb-4">
-              {activeFilter === 'missed'
-                ? <FaPhoneSlash size={22} className="text-red-400" />
-                : <FaPhone size={22} className="text-gray-400" />}
+              {activeFilter === 'missed' ? <FaPhoneSlash size={22} className="text-red-400" /> : <FaPhone size={22} className="text-gray-400" />}
             </div>
-            <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
-              {activeFilter === 'missed' ? 'No missed calls' : 'No call history'}
+            <p className="text-gray-600 dark:text-gray-300 text-sm font-medium">
+              {searchQuery ? 'No matching call logs' : activeFilter === 'missed' ? 'No missed calls' : 'No call history'}
             </p>
             <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
-              {activeFilter === 'missed' ? 'You have no missed calls' : 'Call someone to get started'}
+              {searchQuery ? 'Try searching for another name or username' : 'Voice and video calls will automatically appear here'}
             </p>
           </div>
         ) : filteredCalls.map((call, idx) => {
           const other = otherParty(call);
           const meta = getCallMeta(call);
           const duration = formatDuration(call.duration);
+          const isSelected = selectedIds.includes(call._id);
+
           return (
             <div
               key={call._id || idx}
-              className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-[#202c33] transition-colors group"
+              onClick={() => {
+                if (selectMode) {
+                  toggleSelectCall(call._id);
+                } else {
+                  setSelectedCall(call);
+                }
+              }}
+              className={`flex items-center gap-3 px-4 py-3 border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-[#202c33] cursor-pointer transition-colors group ${
+                isSelected ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : ''
+              }`}
             >
+              {selectMode && (
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-400'}`}>
+                  {isSelected && <FaCheck size={10} />}
+                </div>
+              )}
+
               {/* Avatar */}
               <Avatar user={other} size="md" />
 
-              {/* Info */}
-              <div
-                className="flex-1 min-w-0 cursor-pointer"
-                onClick={() => call.chat && onOpenChat(call.chat._id || call.chat)}
-              >
-                <p className="font-semibold text-gray-900 dark:text-gray-100 text-[15px] truncate">
-                  {getUserName(other)}
-                </p>
+              {/* Call Details Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 text-[15px] truncate">
+                    {getUserName(other)}
+                  </p>
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500 flex-shrink-0 ml-2">
+                    {formatDate(call.createdAt)}
+                  </span>
+                </div>
+
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  {/* Direction arrow icon */}
                   <span className={meta.dirColor}>{meta.dirIcon}</span>
-                  {/* Call type icon (phone or video) */}
                   <span className={meta.dirColor}>{meta.typeIcon}</span>
-                  {/* Label */}
                   <span className={`text-xs ${meta.labelColor}`}>{meta.label}</span>
-                  {/* Dot separator */}
                   <span className="text-gray-300 dark:text-gray-600 text-xs">•</span>
-                  {/* Date/time */}
-                  <span className="text-xs text-gray-400 dark:text-gray-500">{formatDate(call.createdAt)}</span>
-                  {/* Duration if available */}
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{formatTime(call.createdAt)}</span>
                   {duration && (
                     <>
                       <span className="text-gray-300 dark:text-gray-600 text-xs">•</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">{duration}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">{duration}</span>
                     </>
                   )}
                 </div>
               </div>
 
-              {/* Action buttons — always visible on hover, call type badge always shown */}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={() => onCall(other, 'voice')}
-                  title="Voice call"
-                  className="p-2 rounded-full text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-                >
-                  <FaPhone size={14} />
-                </button>
-                <button
-                  onClick={() => onCall(other, 'video')}
-                  title="Video call"
-                  className="p-2 rounded-full text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-                >
-                  <FaVideo size={14} />
-                </button>
-              </div>
-
-              {/* Always-visible call type badge */}
-              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${meta.bgColor} ${meta.dirColor}`}>
-                {meta.typeIcon}
-              </div>
+              {/* Direct Quick Call Buttons */}
+              {!selectMode && (
+                <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onCall(other, 'voice'); }}
+                    title="Voice Call"
+                    className="p-2 rounded-full text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors"
+                  >
+                    <FaPhone size={14} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onCall(other, 'video'); }}
+                    title="Video Call"
+                    className="p-2 rounded-full text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                  >
+                    <FaVideo size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
+
+      {/* Call Details Modal */}
+      {selectedCall && (
+        <CallDetailsModal
+          call={selectedCall}
+          currentUserId={user?._id}
+          onClose={() => setSelectedCall(null)}
+          onCall={onCall}
+          onOpenChat={onOpenChat}
+          onDelete={handleDeleteSingle}
+          onTogglePin={(id) => dispatch(togglePinCall(id))}
+          onToggleArchive={(id) => dispatch(toggleArchiveCall(id))}
+        />
+      )}
     </div>
   );
 };

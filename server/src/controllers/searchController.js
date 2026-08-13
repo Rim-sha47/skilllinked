@@ -15,7 +15,9 @@ exports.globalSearch = async (req, res) => {
       return res.status(400).json({ message: 'Search query is required' });
     }
 
-    const regex = new RegExp(query, 'i');
+    // Use regex for partial case-insensitive match (escape special characters)
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escapedQuery, 'i');
     let results = {};
 
     if (type === 'all' || type === 'users') {

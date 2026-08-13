@@ -29,6 +29,7 @@ import { socket } from '../../services/socket';
 import ChatSettings from '../../components/chat/ChatSettings';
 import { LinkedDevicesModal, AdvertiseModal, BroadcastModal, CommunitiesModal, ListsModal } from '../../components/chat/MessagingActionModals';
 import SkillLinkedAIChat from '../../components/chat/SkillLinkedAIChat';
+import { CallMessage } from '../../components/chat/CallMessage';
 
 // ─── Helpers ─────────────────────────────────────────────────
 const formatTime = (d) => {
@@ -43,6 +44,33 @@ const formatDate = (d) => {
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
   return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+};
+const formatLastSeen = (d) => {
+  if (!d) return '';
+  const date = new Date(d);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  
+  if (date.toDateString() === today.toDateString()) {
+    return `Last seen today at ${time}`;
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return `Last seen yesterday at ${time}`;
+  } else {
+    // Check if it's within the last 6 days (e.g. "Last seen Monday at 7:15 PM")
+    const diffTime = Math.abs(today - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays <= 6) {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return `Last seen ${days[date.getDay()]} at ${time}`;
+    }
+    // "Last seen 12 July at 4:30 PM"
+    const day = date.getDate();
+    const month = date.toLocaleDateString([], { month: 'long' });
+    return `Last seen ${day} ${month} at ${time}`;
+  }
 };
 const getUserName = (u) => u?.fullName || u?.name || u?.username || 'User';
 const getUserAvatar = (u) => {
@@ -179,7 +207,7 @@ const HighlightedText = ({ text, query }) => {
 };
 
 // ─── Message Bubble ───────────────────────────────────────────
-const MessageBubble = ({ msg, isMe, onReply, onDelete, onDeleteForMe, onEdit, onStar, onPin, onForward, onCopy, isOnline, isGroup, currentUserId, searchHighlight }) => {
+const MessageBubble = ({ msg, isMe, onReply, onDelete, onDeleteForMe, onEdit, onStar, onPin, onForward, onCopy, isOnline, isGroup, currentUserId, searchHighlight, onInitiateCall }) => {
   const [showActions, setShowActions] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const deleted = msg.isDeleted;
@@ -226,7 +254,9 @@ const MessageBubble = ({ msg, isMe, onReply, onDelete, onDeleteForMe, onEdit, on
             ? 'bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-br-sm'
             : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-100 dark:border-gray-700'
         }`}>
-          {deleted ? (
+          {msg.media?.type === 'call' ? (
+            <CallMessage message={msg} isMe={isMe} onInitiateCall={onInitiateCall} />
+          ) : deleted ? (
             <span className="italic opacity-50 text-[13px]">🚫 This message was deleted</span>
           ) : (
             <>
@@ -617,7 +647,9 @@ const Messaging = () => {
   const [text, setText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isRecordingRemote, setIsRecordingRemote] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [lastSeenMap, setLastSeenMap] = useState({});
   const [showEmoji, setShowEmoji] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [activeTab, setActiveTab] = useState('inbox');   // inbox | archived (for sub-filter inside chats)
@@ -673,8 +705,16 @@ const Messaging = () => {
     socket.on('user online', ({ userId, online }) => {
       setOnlineUsers(prev => online ? [...new Set([...prev, userId.toString()])] : prev.filter(id => id !== userId.toString()));
     });
-    socket.on('typing', ({ room }) => { if (room === activeChatId) setIsTyping(true); });
-    socket.on('stop typing', ({ room }) => { if (room === activeChatId) setIsTyping(false); });
+    socket.on('user offline', ({ userId, lastSeen }) => {
+      setOnlineUsers(prev => prev.filter(id => id !== userId.toString()));
+      if (lastSeen) {
+        setLastSeenMap(prev => ({ ...prev, [userId.toString()]: lastSeen }));
+      }
+    });
+    socket.on('typing', ({ room, userId }) => { if (room === activeChatId) setIsTyping(true); });
+    socket.on('stop typing', ({ room, userId }) => { if (room === activeChatId) setIsTyping(false); });
+    socket.on('recording-start', ({ room, userId }) => { if (room === activeChatId) setIsRecordingRemote(true); });
+    socket.on('recording-stop', ({ room, userId }) => { if (room === activeChatId) setIsRecordingRemote(false); });
 
     // Real-time tick: delivered
     socket.on('message status update', ({ messageId, chatId, status }) => {
@@ -715,18 +755,34 @@ const Messaging = () => {
       setCallState({ active: false, receiving: true, caller: { _id: data.from, fullName: data.name }, type: data.type, accepted: false, isGroup: false });
     });
     socket.on('call-accepted', () => setCallState(prev => ({ ...prev, accepted: true })));
-    socket.on('call-rejected', () => { setCallState({ active: false, receiving: false, caller: null, type: null, accepted: false }); alert('Call rejected'); });
-    socket.on('call-ended', () => setCallState({ active: false, receiving: false, caller: null, type: null, accepted: false }));
+    // Real-time call history and chat call record sync
+    socket.on('call-history-updated', () => {
+      dispatch(fetchCallHistory());
+      if (activeChatId) {
+        dispatch(fetchMessages({ chatId: activeChatId, page: 1, limit: 50 }));
+      }
+    });
 
-    socket.on('group-call-incoming', (data) => {
-      setCallState({ active: false, receiving: true, caller: data.caller, type: data.type, accepted: false, isGroup: true, chatName: data.chatName });
+    socket.on('call-ended', () => {
+      setCallState({ active: false, receiving: false, caller: null, type: null, accepted: false });
+      dispatch(fetchCallHistory());
+      if (activeChatId) dispatch(fetchMessages({ chatId: activeChatId, page: 1, limit: 50 }));
+    });
+
+    socket.on('call-rejected', () => {
+      setCallState({ active: false, receiving: false, caller: null, type: null, accepted: false });
+      dispatch(fetchCallHistory());
+      if (activeChatId) dispatch(fetchMessages({ chatId: activeChatId, page: 1, limit: 50 }));
     });
 
     return () => {
       socket.off('online users');
       socket.off('user online');
+      socket.off('user offline');
       socket.off('typing');
       socket.off('stop typing');
+      socket.off('recording-start');
+      socket.off('recording-stop');
       socket.off('message status update');
       socket.off('messages seen');
       socket.off('group updated');
@@ -734,6 +790,7 @@ const Messaging = () => {
       socket.off('call-accepted');
       socket.off('call-rejected');
       socket.off('call-ended');
+      socket.off('call-history-updated');
       socket.off('group-call-incoming');
     };
   }, [activeChatId]);
@@ -743,6 +800,8 @@ const Messaging = () => {
     if (user?._id) {
       // Always fetch chats — if activeChatId was pre-set from profile nav, it will auto-open
       dispatch(fetchChats());
+      // Also fetch call history to persist call records like WhatsApp
+      dispatch(fetchCallHistory());
     }
   }, [user?._id]);
 
@@ -867,6 +926,7 @@ const Messaging = () => {
       mediaRecorderRef.current.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       mediaRecorderRef.current.start();
       setIsRecording(true);
+      if (activeChatId) socket?.emit('recording-start', activeChatId);
     } catch (err) { console.error('Mic error:', err); }
   };
 
@@ -884,6 +944,7 @@ const Messaging = () => {
         if (sendMedia.fulfilled.match(action)) socket?.emit('new message', action.payload);
       });
       setIsRecording(false);
+      if (activeChatId) socket?.emit('recording-stop', activeChatId);
     };
     mediaRecorderRef.current.stop();
   };
@@ -926,6 +987,8 @@ const Messaging = () => {
     if (e.target.scrollTop === 0) loadMoreMessages();
   };
 
+  const currentCallIdRef = useRef(null);
+
   // ─── Calling ─────────────────────────────────────────────
   const initiateCall = (type) => {
     if (isGroupChat) {
@@ -936,11 +999,14 @@ const Messaging = () => {
     const otherUserId = otherUser._id || otherUser;
     setCallState({ active: true, receiving: false, caller: otherUser, type, accepted: false, isGroup: false });
     socket?.emit('call-user', { userToCall: otherUserId, from: user._id, name: getUserName(user), type });
-    // Log call record so it appears in calls panel
-    dispatch(createCallRecord({ receiverId: otherUserId, type, chatId: activeChatId }));
-    setTimeout(() => dispatch(fetchCallHistory()), 1500);
-  };
 
+    // Create call record in DB (synchronizes with Calls Tab and Chat)
+    dispatch(createCallRecord({ receiverId: otherUserId, type, chatId: activeChatId })).then(action => {
+      if (createCallRecord.fulfilled.match(action) && action.payload?._id) {
+        currentCallIdRef.current = action.payload._id;
+      }
+    });
+  };
 
   const initiateGroupCall = (type) => {
     if (!activeChat) return;
@@ -954,14 +1020,21 @@ const Messaging = () => {
       socket?.emit('group-call-join', { chatId: activeChatId, user });
     } else if (callState.caller) {
       socket?.emit('answer-call', { to: callState.caller._id || callState.caller.id });
+      if (currentCallIdRef.current) {
+        dispatch(updateCallRecord({ callId: currentCallIdRef.current, status: 'answered' }));
+      }
     }
   };
 
   const rejectCall = () => {
     if (!callState.isGroup && callState.caller) {
       socket?.emit('reject-call', { to: callState.caller._id || callState.caller.id });
+      if (currentCallIdRef.current) {
+        dispatch(updateCallRecord({ callId: currentCallIdRef.current, status: 'declined' }));
+      }
     }
     setCallState({ active: false, receiving: false, caller: null, type: null, accepted: false });
+    currentCallIdRef.current = null;
   };
 
   const endCall = () => {
@@ -970,8 +1043,13 @@ const Messaging = () => {
     } else {
       const toId = callState.receiving ? (callState.caller?._id || callState.caller?.id) : (otherUser?._id || otherUser);
       socket?.emit('end-call', { to: toId });
+      if (currentCallIdRef.current) {
+        const finalStatus = callState.accepted ? 'ended' : 'cancelled';
+        dispatch(updateCallRecord({ callId: currentCallIdRef.current, status: finalStatus }));
+      }
     }
     setCallState({ active: false, receiving: false, caller: null, type: null, accepted: false });
+    currentCallIdRef.current = null;
   };
 
   // ─── Group by date (with in-chat search filter) ──────────
@@ -1430,17 +1508,22 @@ const Messaging = () => {
                     </h2>
                     <p className={`text-xs font-medium flex items-center gap-1 ${
                       isGroupChat ? 'text-gray-400 dark:text-gray-500' :
+                      isRecordingRemote ? 'text-green-500' :
                       isTyping ? 'text-green-500' :
                       isOtherOnline ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'
                     }`}>
                       {isGroupChat ? (
                         `${activeChat.users?.length} members`
+                      ) : isRecordingRemote ? (
+                        'Recording audio...'
                       ) : isTyping ? (
-                        'typing...'
+                        'Typing...'
                       ) : isOtherOnline ? (
-                        <><FaCircle className="w-1.5 h-1.5" /> online</>
+                        <><FaCircle className="w-1.5 h-1.5" /> Online</>
                       ) : (
-                        'offline'
+                        lastSeenMap[otherUser?._id?.toString() || otherUser?.toString()] || otherUser?.lastSeen ? 
+                        formatLastSeen(lastSeenMap[otherUser?._id?.toString() || otherUser?.toString()] || otherUser?.lastSeen) : 
+                        ''
                       )}
                     </p>
                   </div>
@@ -1638,6 +1721,7 @@ const Messaging = () => {
                         isGroup={isGroupChat}
                         currentUserId={user?._id}
                         searchHighlight={inChatQueryLower || ''}
+                        onInitiateCall={(type) => initiateCall(type)}
                       />
                     );
                   })}
@@ -1809,8 +1893,33 @@ const Messaging = () => {
                 <div className="flex flex-col items-center">
                   <Avatar user={otherUser} size="lg" online={isOtherOnline} />
                   <p className="text-white font-bold text-lg mt-3">{getUserName(otherUser)}</p>
-                  {otherUser?.username && <p className="text-blue-100 text-xs">@{otherUser.username}</p>}
+                  <p className={`text-xs font-medium flex items-center justify-center gap-1 mt-1 ${isOtherOnline ? 'text-green-300' : 'text-blue-200'}`}>
+                    {isOtherOnline ? (
+                      <><FaCircle className="w-1.5 h-1.5" /> Online</>
+                    ) : (
+                      lastSeenMap[otherUser?._id?.toString() || otherUser?.toString()] || otherUser?.lastSeen ? 
+                      formatLastSeen(lastSeenMap[otherUser?._id?.toString() || otherUser?.toString()] || otherUser?.lastSeen) : 
+                      'Offline'
+                    )}
+                  </p>
+                  {otherUser?.username && <p className="text-blue-100 text-xs mt-2">@{otherUser.username}</p>}
                   {otherUser?.headline && <p className="text-blue-200 text-xs mt-1 text-center">{otherUser.headline}</p>}
+                  
+                  {/* Call & Video Call Quick Actions */}
+                  <div className="flex items-center gap-3 mt-4">
+                    <button
+                      onClick={() => { setShowUserProfile(false); initiateCall('audio'); }}
+                      className="px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-xs flex items-center gap-2 shadow-md transition-transform active:scale-95"
+                    >
+                      <FaPhone size={13} /> Voice Call
+                    </button>
+                    <button
+                      onClick={() => { setShowUserProfile(false); initiateCall('video'); }}
+                      className="px-4 py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-semibold text-xs flex items-center gap-2 shadow-md transition-transform active:scale-95"
+                    >
+                      <FaVideo size={13} /> Video Call
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">

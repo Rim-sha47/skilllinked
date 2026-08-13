@@ -15,9 +15,15 @@ const messageSchema = new mongoose.Schema(
       url: String, // Cloudinary URL
       type: {
         type: String,
-        enum: ['image', 'video', 'file', 'voice', 'gif', 'none'],
+        enum: ['image', 'video', 'file', 'voice', 'gif', 'call', 'none'],
         default: 'none'
       }
+    },
+    callInfo: {
+      callId: { type: mongoose.Schema.Types.ObjectId, ref: 'Call' },
+      callType: { type: String, enum: ['voice', 'video'] },
+      callStatus: { type: String, enum: ['started', 'ended', 'missed', 'declined', 'cancelled'] },
+      duration: { type: Number, default: 0 }
     },
     chat: {
       type: mongoose.Schema.Types.ObjectId,

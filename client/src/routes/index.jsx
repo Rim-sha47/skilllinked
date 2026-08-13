@@ -23,6 +23,7 @@ const Search       = lazy(() => import('../pages/Search/Search'));
 const AI           = lazy(() => import('../pages/AI/AI'));
 const Premium      = lazy(() => import('../pages/Premium/Premium'));
 const Admin        = lazy(() => import('../pages/Admin/Admin'));
+const PrivacySettings = lazy(() => import('../pages/Settings/PrivacySettings'));
 
 // ── Skeleton fallback shown while each chunk loads ───────────────
 const PageLoader = () => (
@@ -82,6 +83,7 @@ export const AppRoutes = () => (
           <Route path="/app/ai"           element={<AI />} />
           <Route path="/app/premium"      element={<Premium />} />
           <Route path="/app/admin"        element={<Admin />} />
+          <Route path="/app/settings/privacy" element={<PrivacySettings />} />
         </Route>
       </Route>
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
@@ -36,6 +36,7 @@ import {
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
+import { fetchCareerInsights, analyzeResume, sendCareerCoachMessage, clearCoachHistory, addCoachUserMessage } from '../../redux/slices/careerSlice';
 
 const trendingTechnologies = [
   'React',
@@ -108,59 +109,15 @@ const suggestedQuestions = [
 
 const AI = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const authUser = useSelector((state) => state.auth.user);
+  
+  const { insights, isFetchingInsights, coachHistory, isCoachResponding, isAnalyzingResume } = useSelector(state => state.career);
+  
   const userName = authUser?.fullName || authUser?.username || 'there';
 
-  const createSession = (title = 'Career Coach Pro') => ({
-    id: `session-${Date.now()}`,
-    title,
-    messages: defaultChatMessages,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  });
-
   const [chatInput, setChatInput] = useState('');
-  const [chatSearchQuery, setChatSearchQuery] = useState('');
-  const [chatSessions, setChatSessions] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('skilllinked_ai_chat_sessions'));
-      return Array.isArray(stored) && stored.length ? stored : [createSession()];
-    } catch {
-      return [createSession()];
-    }
-  });
-  const [activeSessionId, setActiveSessionId] = useState(() => {
-    try {
-      return localStorage.getItem('skilllinked_ai_active_session') || null;
-    } catch {
-      return null;
-    }
-  });
-  const [chatMessages, setChatMessages] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('skilllinked_ai_chat_sessions'));
-      const currentId = localStorage.getItem('skilllinked_ai_active_session');
-      const active = Array.isArray(stored)
-        ? stored.find((session) => session.id === currentId) || stored[0]
-        : null;
-      return active ? active.messages : defaultChatMessages;
-    } catch {
-      return defaultChatMessages;
-    }
-  });
-  const [isChatLoading, setIsChatLoading] = useState(false);
-  const [chatSessionsVisible, setChatSessionsVisible] = useState(false);
-  const [sessionTitle, setSessionTitle] = useState('');
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [dashboardStats, setDashboardStats] = useState({
-    profileViews: 0,
-    connections: 0,
-    applications: 0,
-    unreadMessages: 0,
-    profileCompletion: 0,
-  });
-  const [profile, setProfile] = useState({});
-  const [jobs, setJobs] = useState([]);
+  
   const [savedJobs, setSavedJobs] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('skilllinked_saved_jobs')) || [];
@@ -175,7 +132,6 @@ const AI = () => {
       return [];
     }
   });
-  const [isLoadingJobs, setIsLoadingJobs] = useState(true);
   const [isApplying, setIsApplying] = useState(false);
 
   const [activeResume, setActiveResume] = useState(() => {
@@ -192,15 +148,7 @@ const AI = () => {
       return null;
     }
   });
-  const [analysisResult, setAnalysisResult] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('skilllinked_resume_analysis')) || null;
-    } catch {
-      return null;
-    }
-  });
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+  
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -208,15 +156,13 @@ const AI = () => {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('skilllinked_ai_chat', JSON.stringify(chatMessages));
-    } catch {}
-  }, [chatMessages]);
+    dispatch(fetchCareerInsights());
+  }, [dispatch]);
 
   const handleExportChat = () => {
-    if (!chatMessages.length) return;
-    const transcript = chatMessages
-      .map((msg) => `${msg.sender === 'user' ? 'You' : 'AI Coach'}: ${msg.text}`)
+    if (!coachHistory.length) return;
+    const transcript = coachHistory
+      .map((msg) => `${msg.role === 'user' ? 'You' : 'AI Coach'}: ${msg.content}`)
       .join('\n\n');
     const blob = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -231,41 +177,19 @@ const AI = () => {
 
   const handleClearChat = () => {
     stopSpeaking();
-    setChatMessages(defaultChatMessages);
-    localStorage.removeItem('skilllinked_ai_chat');
+    dispatch(clearCoachHistory());
   };
 
   const sendChatMessage = async (message) => {
-    if (!message?.trim() || isChatLoading) return;
+    if (!message?.trim() || isCoachResponding) return;
 
     const trimmedMessage = message.trim();
-    const userMessage = { sender: 'user', text: trimmedMessage };
+    dispatch(addCoachUserMessage(trimmedMessage));
     setChatInput('');
-    setIsChatLoading(true);
-
-    const updatedChatMessages = [...chatMessages, userMessage];
-    setChatMessages(updatedChatMessages);
-    if (activeSessionId) {
-      setChatSessions((prev) =>
-        prev.map((session) => (session.id === activeSessionId ? { ...session, messages: updatedChatMessages, updatedAt: new Date().toISOString() } : session))
-      );
-    }
-
-    const history = updatedChatMessages.map((item) => ({
-      role: item.sender === 'user' ? 'user' : 'assistant',
-      content: item.text,
-    }));
 
     try {
-      const res = await api.post('/ai/career-chat', { message: message.trim(), history });
+      const res = await dispatch(sendCareerCoachMessage({ message: trimmedMessage, history: coachHistory })).unwrap();
       const reply = res.reply || 'Here is some AI-backed career advice.';
-      const latestMessages = [...updatedChatMessages, { sender: 'ai', text: reply }];
-      setChatMessages(latestMessages);
-      if (activeSessionId) {
-        setChatSessions((prev) =>
-          prev.map((session) => (session.id === activeSessionId ? { ...session, messages: latestMessages, updatedAt: new Date().toISOString() } : session))
-        );
-      }
 
       if ('speechSynthesis' in window) {
         setIsSpeaking(true);
@@ -278,13 +202,6 @@ const AI = () => {
     } catch (error) {
       console.error('Chat error', error);
       const fallback = 'For strong interview preparation, focus on specific examples, metrics, and problem-solving outcomes.';
-      const latestMessages = [...updatedChatMessages, { sender: 'ai', text: fallback }];
-      setChatMessages(latestMessages);
-      if (activeSessionId) {
-        setChatSessions((prev) =>
-          prev.map((session) => (session.id === activeSessionId ? { ...session, messages: latestMessages, updatedAt: new Date().toISOString() } : session))
-        );
-      }
       if ('speechSynthesis' in window) {
         setIsSpeaking(true);
         const utterance = new SpeechSynthesisUtterance(fallback);
@@ -293,8 +210,6 @@ const AI = () => {
         utterance.onerror = () => setIsSpeaking(false);
         speechSynthesis.speak(utterance);
       }
-    } finally {
-      setIsChatLoading(false);
     }
   };
 
@@ -307,170 +222,76 @@ const AI = () => {
     await sendChatMessage(prompt);
   };
 
-  const computeCareerScore = () => {
-    let score = 20;
-    if (profile?.user?.profilePicture && !profile.user.profilePicture.includes('anonymous')) score += 15;
-    if (profile?.headline) score += 10;
-    if (profile?.bio) score += 10;
-    if (profile?.skills?.length >= 5) score += 15;
-    if (profile?.experience?.length >= 2) score += 10;
-    if (profile?.education?.length >= 1) score += 10;
-    if (profile?.certifications?.length >= 1) score += 5;
-    if (activeResume) score += 10;
-    if (dashboardStats.connections >= 5) score += 5;
-    if (dashboardStats.applications > 0) score += 5;
-    if (score > 100) score = 100;
-    return score;
-  };
-
-  const careerScore = computeCareerScore();
-
+  const careerScore = insights?.careerScore || 0;
+  
+  const checklistData = insights?.completionChecklist || {};
   const profileChecklist = [
     {
       id: 'photo',
       label: 'Profile Photo',
-      complete: !!profile?.user?.profilePicture && !profile.user.profilePicture.includes('anonymous'),
+      complete: checklistData.photo || false,
       action: 'Add Photo',
     },
     {
       id: 'headline',
       label: 'Headline',
-      complete: !!profile?.headline,
+      complete: checklistData.headline || false,
       action: 'Update Headline',
     },
     {
       id: 'bio',
       label: 'Bio',
-      complete: !!profile?.bio,
+      complete: checklistData.bio || false,
       action: 'Add Bio',
     },
     {
       id: 'skills',
       label: 'Skills',
-      complete: (profile?.skills?.length || 0) > 0,
+      complete: checklistData.skills || false,
       action: 'Add Skill',
     },
     {
       id: 'resume',
       label: 'Resume',
-      complete: !!activeResume,
+      complete: checklistData.resume || !!activeResume,
       action: 'Upload Resume',
     },
     {
       id: 'experience',
       label: 'Experience',
-      complete: (profile?.experience?.length || 0) > 0,
+      complete: checklistData.experience || false,
       action: 'Add Experience',
     },
     {
       id: 'education',
       label: 'Education',
-      complete: (profile?.education?.length || 0) > 0,
+      complete: checklistData.education || false,
       action: 'Add Education',
     },
   ];
 
-  const filteredChatMessages = chatSearchQuery.trim()
-    ? chatMessages.filter((msg) => msg.text.toLowerCase().includes(chatSearchQuery.toLowerCase()))
-    : chatMessages;
+  const trends = insights?.trendingTechnologies?.length ? insights.trendingTechnologies : ['React', 'Node.js', 'AI', 'Python'];
 
-  useEffect(() => {
-    if (!activeSessionId && chatSessions.length) {
-      setActiveSessionId(chatSessions[0].id);
-    }
-  }, [activeSessionId, chatSessions]);
-
-  useEffect(() => {
-    const active = chatSessions.find((session) => session.id === activeSessionId) || chatSessions[0];
-    if (active && active.messages !== chatMessages) {
-      setChatMessages(active.messages);
-    }
-  }, [activeSessionId, chatSessions]);
-
-  useEffect(() => {
-    if (!activeSessionId) return;
-    // (Removed) previously this effect synced chatMessages -> chatSessions
-  }, [chatMessages, activeSessionId]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('skilllinked_ai_chat_sessions', JSON.stringify(chatSessions));
-      if (activeSessionId) {
-        localStorage.setItem('skilllinked_ai_active_session', activeSessionId);
-      }
-    } catch {}
-  }, [chatSessions, activeSessionId]);
-
-  const trends = profile?.skills?.length
-    ? [...new Set([...(profile.skills.includes('React') ? ['TypeScript', 'Next.js'] : []), ...(profile.skills.includes('Python') ? ['Pandas', 'Machine Learning'] : []), 'Cloud Computing', 'AI', 'Data Science'])]
-    : ['React', 'Node.js', 'AI', 'Python'];
-
-  const learningRecommendations = profile?.skills?.length
-    ? [
-        { title: 'Modern Resume Optimization', type: 'Article' },
-        { title: 'Interview Ready: System Design', type: 'Video' },
-        { title: 'AI Product Roadmap', type: 'Course' },
-        { title: 'Career Growth Blueprint', type: 'Book' },
-      ]
-    : [
-        { title: 'Career Foundations', type: 'Course' },
-        { title: 'Build a Strong LinkedIn Profile', type: 'Article' },
-        { title: 'Job Search Strategies', type: 'Video' },
-        { title: 'Professional Networking', type: 'Book' },
-      ];
-
-  const dailySuggestions = [
-    'Complete your profile to increase discoverability.',
-    'Add 3 more skills to improve recommendations.',
-    'Upload a better profile photo for trust.',
-    'Apply for the top job matches below.',
-    'Share an update to boost engagement.',
-    'Update your resume for stronger ATS compatibility.',
+  const learningRecommendations = [
+    { title: 'Modern Resume Optimization', type: 'Article' },
+    { title: 'Interview Ready: System Design', type: 'Video' },
+    { title: 'AI Product Roadmap', type: 'Course' },
+    { title: 'Career Growth Blueprint', type: 'Book' },
   ];
 
+  const dailySuggestions = insights?.dailySuggestions || [
+    'Complete your profile to increase discoverability.'
+  ];
+
+  const analysisResult = insights?.resumeAnalysis || null;
+
   const resumeIssues = analysisResult
-    ? ['Enhance action verbs', 'Keep bullet points concise', 'Include measurable outcomes']
+    ? (analysisResult.grammarIssues?.length ? analysisResult.grammarIssues : ['Enhance action verbs', 'Keep bullet points concise'])
     : ['Upload your resume to see detailed insights'];
 
   const formattingTips = analysisResult
-    ? ['Standardize spacing', 'Use consistent font style', 'Avoid dense paragraphs']
+    ? (analysisResult.formattingSuggestions?.length ? analysisResult.formattingSuggestions : ['Standardize spacing', 'Use consistent font style'])
     : ['Upload your resume to see recommendations'];
-
-  const fetchProfileData = async () => {
-    try {
-      const response = await api.get('/profiles/me');
-      setProfile(response);
-    } catch (error) {
-      console.error('Failed to fetch profile', error);
-    }
-  };
-
-  const fetchDashboardData = async () => {
-    try {
-      const response = await api.get('/profiles/dashboard');
-      setDashboardStats((prev) => ({ ...prev, ...response }));
-    } catch (error) {
-      console.error('Failed to fetch dashboard stats', error);
-    }
-  };
-
-  const fetchJobs = async () => {
-    setIsLoadingJobs(true);
-    try {
-      const response = await api.get('/jobs');
-      setJobs(Array.isArray(response) ? response.slice(0, 6) : []);
-    } catch (error) {
-      console.error('Failed to fetch jobs', error);
-    } finally {
-      setIsLoadingJobs(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchProfileData();
-    fetchDashboardData();
-    fetchJobs();
-  }, []);
 
   useEffect(() => {
     try {
@@ -507,7 +328,6 @@ const AI = () => {
 
   const handleFileUpload = async (file) => {
     if (!file) return;
-    setIsAnalyzing(true);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -529,49 +349,21 @@ const AI = () => {
     };
     reader.readAsDataURL(file);
 
+    // First upload to profile, then trigger AI analysis
     const formData = new FormData();
     formData.append('resume', file);
-
     try {
-      const res = await api.post('/ai/analyze-resume', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const analysisObj = {
-        fileName: res.fileName || file.name,
-        score: res.score || Math.floor(Math.random() * 15) + 82,
-        title: res.title || 'Professional Resume Analysis',
-        missingKeywords: res.missingKeywords || ['GraphQL', 'Docker', 'Kubernetes'],
-        suggestions: res.suggestions || [
-          'Quantify your achievements in each role.',
-          'Showcase relevant projects and links.',
-          'Keep bullets concise and achievement-oriented.',
-        ],
-      };
-      setAnalysisResult(analysisObj);
-      localStorage.setItem('skilllinked_resume_analysis', JSON.stringify(analysisObj));
-    } catch (error) {
-      console.error('Resume analysis failed', error);
-      const fallback = {
-        fileName: file.name,
-        score: 82,
-        title: 'Resume Review Summary',
-        missingKeywords: ['CI/CD', 'System Design', 'Kubernetes'],
-        suggestions: [
-          'Use stronger action words for each bullet.',
-          'Include relevant industry keywords.',
-          'Improve visual hierarchy for recruiters.',
-        ],
-      };
-      setAnalysisResult(fallback);
-      localStorage.setItem('skilllinked_resume_analysis', JSON.stringify(fallback));
-    } finally {
-      setIsAnalyzing(false);
+      await api.post('/profiles/upload-resume', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    } catch (err) {
+      console.warn('Resume upload to profile failed:', err.message);
     }
+
+    // Trigger Redux career analysis (reads the resume from the profile)
+    dispatch(analyzeResume());
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileUpload(e.dataTransfer.files[0]);
     }
@@ -585,7 +377,6 @@ const AI = () => {
   const handleRemoveResume = () => {
     if (activeResume?.url) URL.revokeObjectURL(activeResume.url);
     setActiveResume(null);
-    setAnalysisResult(null);
     localStorage.removeItem('skilllinked_resume_meta');
     localStorage.removeItem('skilllinked_resume_data');
     localStorage.removeItem('skilllinked_resume_analysis');
@@ -757,17 +548,17 @@ const AI = () => {
             </Card>
             <Card className="p-6 border-accent/20">
               <p className="text-xs uppercase tracking-[0.2em] font-semibold text-accent">Profile Completion</p>
-              <p className="mt-4 text-5xl font-black text-text-primary dark:text-white">{dashboardStats.profileCompletion}%</p>
+              <p className="mt-4 text-5xl font-black text-text-primary dark:text-white">{insights?.profileCompletion || 0}%</p>
               <div className="mt-4 h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent" style={{ width: `${dashboardStats.profileCompletion}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent" style={{ width: `${insights?.profileCompletion || 0}%` }} />
               </div>
             </Card>
             <Card className="p-6 border-sky-200 dark:border-sky-500/20">
               <p className="text-xs uppercase tracking-[0.2em] font-semibold text-sky-600">Activity Pulse</p>
               <div className="mt-5 space-y-3 text-sm text-text-secondary dark:text-gray-400">
-                <div className="flex justify-between"><span>Connections</span><strong>{dashboardStats.connections}</strong></div>
-                <div className="flex justify-between"><span>Applications</span><strong>{dashboardStats.applications}</strong></div>
-                <div className="flex justify-between"><span>Profile Views</span><strong>{dashboardStats.profileViews}</strong></div>
+                <div className="flex justify-between"><span>Connections</span><strong>{insights?.activityPulse?.connections || 0}</strong></div>
+                <div className="flex justify-between"><span>Applications</span><strong>{insights?.activityPulse?.applications || 0}</strong></div>
+                <div className="flex justify-between"><span>Profile Views</span><strong>{insights?.activityPulse?.profileViews || 0}</strong></div>
               </div>
             </Card>
           </div>
@@ -901,7 +692,7 @@ const AI = () => {
 
           <Card title="Job Recommendations" className="border-blue-500/20">
             <div className="space-y-4">
-              {(isLoadingJobs ? Array.from({ length: 3 }) : jobs).map((job, index) => (
+              {(isFetchingInsights ? Array.from({ length: 3 }) : (insights?.matchedJobs || [])).map((job, index) => (
                 <motion.div
                   key={job?._id || index}
                   initial={{ opacity: 0, y: 20 }}
@@ -919,9 +710,12 @@ const AI = () => {
                         <div className="text-sm font-semibold text-text-primary dark:text-white">{job.salaryRange || 'Competitive'}</div>
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2 text-xs text-text-secondary dark:text-gray-400">
-                        {(job.skills || []).slice(0, 4).map((skill) => (
+                        {(job.skillsRequired || job.skills || []).slice(0, 4).map((skill) => (
                           <span key={skill} className="rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1">{skill}</span>
                         ))}
+                        {job.matchPercentage > 0 && (
+                          <span className="rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-3 py-1 font-semibold">{job.matchPercentage}% Match</span>
+                        )}
                       </div>
                       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                         <Button
@@ -964,7 +758,7 @@ const AI = () => {
 
           <Card title="Trending Technologies" className="border-violet-500/20">
             <div className="flex flex-wrap gap-3">
-              {trendingTechnologies.map((tech) => (
+              {trends.map((tech) => (
                 <span key={tech} className="rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 px-4 py-2 text-xs font-semibold">
                   {tech}
                 </span>
@@ -986,10 +780,10 @@ const AI = () => {
           <Card title="Weekly Progress" className="border-sky-500/20">
             <div className="space-y-5">
               {[
-                { name: 'Profile Growth', value: dashboardStats.profileCompletion },
-                { name: 'Followers Growth', value: Math.min(100, (profile?.user?.followers?.length || 0) * 12) },
-                { name: 'Connections Growth', value: Math.min(100, dashboardStats.connections * 8) },
-                { name: 'Job Applications', value: Math.min(100, dashboardStats.applications * 20) },
+                { name: 'Profile Completion', value: insights?.profileCompletion || 0 },
+                { name: 'Connections', value: Math.min(100, (insights?.activityPulse?.connections || 0) * 5) },
+                { name: 'Job Applications', value: Math.min(100, (insights?.activityPulse?.applications || 0) * 20) },
+                { name: 'Profile Views', value: Math.min(100, (insights?.viewsAnalytics?.thisWeek || 0) * 10) },
               ].map((item) => (
                 <div key={item.name}>
                   <div className="flex items-center justify-between text-sm font-semibold text-text-primary dark:text-white mb-2">
@@ -1026,12 +820,12 @@ const AI = () => {
           <Card title="Profile Analytics" className="border-cyan-500/20">
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'Profile Views', value: dashboardStats.profileViews },
-                { label: 'Followers', value: profile?.user?.followers?.length || 0 },
-                { label: 'Connections', value: dashboardStats.connections },
-                { label: 'Applications', value: dashboardStats.applications },
-                { label: 'Likes', value: profile?.postsCount ? profile.postsCount * 4 : 12 },
-                { label: 'Comments', value: profile?.postsCount ? profile.postsCount * 2 : 5 },
+                { label: 'Profile Views', value: insights?.activityPulse?.profileViews || 0 },
+                { label: 'Views Today', value: insights?.viewsAnalytics?.today || 0 },
+                { label: 'Views This Week', value: insights?.viewsAnalytics?.thisWeek || 0 },
+                { label: 'Connections', value: insights?.activityPulse?.connections || 0 },
+                { label: 'Applications', value: insights?.activityPulse?.applications || 0 },
+                { label: 'Posts', value: insights?.activityPulse?.posts || 0 },
               ].map((item) => (
                 <div key={item.label} className="rounded-3xl bg-white dark:bg-dark-card border border-gray-200 dark:border-gray-700 p-5">
                   <p className="text-xs uppercase tracking-[0.2em] font-semibold text-text-secondary dark:text-gray-400">{item.label}</p>
@@ -1082,21 +876,33 @@ const AI = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50 dark:bg-dark-bg">
-                {chatMessages.map((msg, idx) => (
-                  <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {coachHistory.length === 0 && (
+                  <div className="flex justify-start">
                     <div className="max-w-[90%]">
-                      <div className={`flex items-center mb-2 ${msg.sender === 'user' ? 'justify-end' : ''}`}>
-                        <span className={`text-xs font-bold uppercase tracking-[0.2em] ${msg.sender === 'user' ? 'text-primary mr-1' : 'text-text-secondary ml-1'}`}>
-                          {msg.sender === 'user' ? 'You' : 'AI Coach'}
+                      <div className="flex items-center mb-2">
+                        <span className="text-xs font-bold uppercase tracking-[0.2em] text-text-secondary ml-1">AI Coach</span>
+                      </div>
+                      <div className="rounded-2xl rounded-tl-none p-5 text-sm md:text-base leading-relaxed bg-white dark:bg-dark-card text-text-primary dark:text-gray-200 shadow-sm border border-gray-200/50 dark:border-gray-700/50">
+                        Hi! I'm your AI career coach. Ask me about resume review, interview prep, networking strategy, or job search tips.
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {coachHistory.map((msg, idx) => (
+                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className="max-w-[90%]">
+                      <div className={`flex items-center mb-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                        <span className={`text-xs font-bold uppercase tracking-[0.2em] ${msg.role === 'user' ? 'text-primary mr-1' : 'text-text-secondary ml-1'}`}>
+                          {msg.role === 'user' ? 'You' : 'AI Coach'}
                         </span>
                       </div>
-                      <div className={`rounded-2xl p-5 text-sm md:text-base leading-relaxed ${msg.sender === 'user' ? 'rounded-tr-none bg-gradient-to-r from-primary to-blue-600 text-white shadow-glow' : 'rounded-tl-none bg-white dark:bg-dark-card text-text-primary dark:text-gray-200 shadow-sm border border-gray-200/50 dark:border-gray-700/50'}`}>
-                        {msg.text}
+                      <div className={`rounded-2xl p-5 text-sm md:text-base leading-relaxed ${msg.role === 'user' ? 'rounded-tr-none bg-gradient-to-r from-primary to-blue-600 text-white shadow-glow' : 'rounded-tl-none bg-white dark:bg-dark-card text-text-primary dark:text-gray-200 shadow-sm border border-gray-200/50 dark:border-gray-700/50'}`}>
+                        {msg.content}
                       </div>
                     </div>
                   </div>
                 ))}
-                {isChatLoading && (
+                {isCoachResponding && (
                   <div className="flex justify-start">
                     <div className="rounded-2xl rounded-tl-none p-4 bg-white dark:bg-dark-card text-text-secondary flex items-center space-x-2">
                       <FaSpinner className="animate-spin text-primary" />
@@ -1130,7 +936,7 @@ const AI = () => {
                   >
                     <FaVolumeUp className="text-lg" />
                   </button>
-                  <Button type="submit" disabled={!chatInput.trim() || isChatLoading} className={`rounded-2xl p-3 ${!chatInput.trim() || isChatLoading ? 'opacity-50' : 'shadow-glow'}`}>
+                  <Button type="submit" disabled={!chatInput.trim() || isCoachResponding} className={`rounded-2xl p-3 ${!chatInput.trim() || isCoachResponding ? 'opacity-50' : 'shadow-glow'}`}>
                     <FaPaperPlane className="text-lg" />
                   </Button>
                 </div>

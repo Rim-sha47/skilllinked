@@ -1,29 +1,80 @@
 const Message = require('../models/Message');
+const User = require('../models/User');
 
 const onlineUsers = new Map(); // userId -> socketId
+
+// Import centralized privacy helper
+const { canSeePresence } = require('../utils/privacyHelper');
+
+// Helper to broadcast presence updates
+const broadcastPresence = async (io, targetUserId, isOnline) => {
+  try {
+    const targetUser = await User.findById(targetUserId).select('privacySettings following followers lastSeen isOnline isRecording typingTo');
+    if (!targetUser) return;
+
+    for (const [viewerId, viewerSocketId] of onlineUsers.entries()) {
+      if (viewerId === targetUserId.toString()) continue;
+
+      let canSeeOnline = canSeePresence(targetUser, viewerId, 'onlineStatus');
+      if (targetUser.privacySettings?.onlineStatus === 'Same as Last Seen') {
+        canSeeOnline = canSeePresence(targetUser, viewerId, 'lastSeen');
+      }
+
+      const canSeeLastSeen = canSeePresence(targetUser, viewerId, 'lastSeen');
+
+      if (isOnline) {
+        if (canSeeOnline) {
+          io.to(viewerId).emit('user online', { userId: targetUserId, online: true });
+        }
+      } else {
+        if (canSeeLastSeen) {
+          io.to(viewerId).emit('user offline', { userId: targetUserId, lastSeen: targetUser.lastSeen });
+        } else {
+          // If they can't see last seen, they just get a generic offline event without timestamp
+          io.to(viewerId).emit('user offline', { userId: targetUserId });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error broadcasting presence:', err);
+  }
+};
 
 module.exports = (io) => {
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
     // User comes online
-    socket.on('setup', (userData) => {
+    socket.on('setup', async (userData) => {
       if (!userData || !userData._id) return;
-      socket.userId = userData._id;
-      onlineUsers.set(userData._id, socket.id);
-      socket.join(userData._id);
+      const userId = userData._id.toString();
+      socket.userId = userId;
+      onlineUsers.set(userId, socket.id);
+      socket.join(userId);
 
       // If user is Admin, join admins room for notifications
       if (userData.role === 'Admin') {
         socket.join('admins');
       }
 
+      try {
+        const user = await User.findById(userId);
+        if (user) {
+          if (!user.activeSockets.includes(socket.id)) {
+            user.activeSockets.push(socket.id);
+          }
+          user.isOnline = true;
+          await user.save();
+          await broadcastPresence(io, userId, true);
+        }
+      } catch (err) {
+        console.error('Error in setup DB update:', err);
+      }
+
       socket.emit('connected');
-      // Broadcast online status
-      io.emit('user online', { userId: userData._id, online: true });
-      // Send current online users list
+      // Send current online users list (might need filtering on client side based on privacy, but we just send all online users and let them filter or just send them blindly for now)
       socket.emit('online users', Array.from(onlineUsers.keys()));
-      console.log(`User ${userData.fullName || userData.name || userData._id} is online`);
+      console.log(`User ${userData.fullName || userData.name || userId} is online`);
     });
 
     // Join a specific chat room
@@ -38,9 +89,34 @@ module.exports = (io) => {
     });
 
     // Typing indicators
-    socket.on('typing', (room) => socket.in(room).emit('typing', { room, userId: socket.userId }));
-    socket.on('stop typing', (room) => socket.in(room).emit('stop typing', { room, userId: socket.userId }));
+    socket.on('typing', async (room) => {
+      socket.in(room).emit('typing', { room, userId: socket.userId });
+      try {
+        if (socket.userId) await User.findByIdAndUpdate(socket.userId, { typingTo: room });
+      } catch (e) {}
+    });
+    
+    socket.on('stop typing', async (room) => {
+      socket.in(room).emit('stop typing', { room, userId: socket.userId });
+      try {
+        if (socket.userId) await User.findByIdAndUpdate(socket.userId, { $unset: { typingTo: "" } });
+      } catch (e) {}
+    });
 
+    // Recording indicators
+    socket.on('recording-start', async (room) => {
+      socket.in(room).emit('recording-start', { room, userId: socket.userId });
+      try {
+        if (socket.userId) await User.findByIdAndUpdate(socket.userId, { isRecording: true });
+      } catch (e) {}
+    });
+
+    socket.on('recording-stop', async (room) => {
+      socket.in(room).emit('recording-stop', { room, userId: socket.userId });
+      try {
+        if (socket.userId) await User.findByIdAndUpdate(socket.userId, { isRecording: false });
+      } catch (e) {}
+    });
     // New message: broadcast to all users in the chat except sender
     // Also update status to 'delivered' for online recipients
     socket.on('new message', async (newMessageReceived) => {
@@ -125,25 +201,63 @@ module.exports = (io) => {
     });
 
     // --- WebRTC Call Signaling (1-on-1 & Group) ---
-    socket.on('call-user', (data) => {
+    socket.on('call-user', async (data) => {
+      // Check block privacy status
+      try {
+        const caller = await User.findById(socket.userId).select('blockedUsers');
+        const receiver = await User.findById(data.userToCall).select('blockedUsers');
+        if (
+          caller?.blockedUsers?.map(String).includes(data.userToCall) ||
+          receiver?.blockedUsers?.map(String).includes(socket.userId)
+        ) {
+          socket.emit('call-blocked', { message: 'User cannot be called due to privacy settings.' });
+          return;
+        }
+      } catch (err) {
+        console.error('Error checking block status for call:', err);
+      }
+
+      // Check if receiver is online or already in call
+      const isOnline = onlineUsers.has(data.userToCall);
+      if (!isOnline) {
+        socket.emit('call-offline', { userToCall: data.userToCall });
+      }
+
       socket.in(data.userToCall).emit('call-user', {
-        signal: data.signalData,
-        from: data.from,
+        signalData: data.signalData,
+        from: data.from || socket.userId,
         name: data.name,
         type: data.type,
+        callId: data.callId,
+        chatId: data.chatId,
       });
     });
 
     socket.on('answer-call', (data) => {
       socket.in(data.to).emit('call-accepted', data.signal);
+      io.to(data.to).to(socket.userId).emit('call-history-updated');
     });
 
     socket.on('reject-call', (data) => {
-      socket.in(data.to).emit('call-rejected');
+      socket.in(data.to).emit('call-rejected', { from: socket.userId });
+      io.to(data.to).to(socket.userId).emit('call-history-updated');
     });
 
     socket.on('end-call', (data) => {
-      socket.in(data.to).emit('call-ended');
+      socket.in(data.to).emit('call-ended', { from: socket.userId, duration: data.duration });
+      io.to(data.to).to(socket.userId).emit('call-history-updated');
+    });
+
+    socket.on('call-busy', (data) => {
+      socket.in(data.to).emit('call-busy', { from: socket.userId });
+    });
+
+    socket.on('call-reconnecting', (data) => {
+      socket.in(data.to).emit('call-reconnecting');
+    });
+
+    socket.on('call-reconnected', (data) => {
+      socket.in(data.to).emit('call-reconnected');
     });
 
     // Group Call Signaling
@@ -174,10 +288,28 @@ module.exports = (io) => {
     });
 
     // Disconnect
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       if (socket.userId) {
-        onlineUsers.delete(socket.userId);
-        io.emit('user online', { userId: socket.userId, online: false });
+        try {
+          const user = await User.findById(socket.userId);
+          if (user) {
+            user.activeSockets = user.activeSockets.filter(s => s !== socket.id);
+            if (user.activeSockets.length === 0) {
+              user.isOnline = false;
+              user.lastSeen = new Date();
+              onlineUsers.delete(socket.userId);
+              await user.save();
+              await broadcastPresence(io, socket.userId, false);
+            } else {
+              await user.save();
+            }
+          } else {
+             onlineUsers.delete(socket.userId);
+          }
+        } catch (err) {
+          console.error('Error on disconnect:', err);
+          onlineUsers.delete(socket.userId);
+        }
       }
       console.log(`Socket disconnected: ${socket.id}`);
     });

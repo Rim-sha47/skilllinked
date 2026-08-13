@@ -5,7 +5,6 @@ const userSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
-      required: [true, 'Please add a full name'],
     },
     username: {
       type: String,
@@ -24,8 +23,8 @@ const userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      required: [true, 'Please add a phone number'],
       unique: true,
+      sparse: true,
     },
     password: {
       type: String,
@@ -121,6 +120,27 @@ const userSchema = new mongoose.Schema(
         }
       ]
     },
+    isOnline: { type: Boolean, default: false },
+    lastSeen: { type: Date },
+    isRecording: { type: Boolean, default: false },
+    typingTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Chat' },
+    activeSockets: [{ type: String }],
+    privacySettings: {
+      lastSeen: { type: String, enum: ['Everyone', 'My Connections', 'Connections Except...', 'Only Share With...', 'Nobody'], default: 'Everyone' },
+      onlineStatus: { type: String, enum: ['Everyone', 'My Connections', 'Connections Except...', 'Only Share With...', 'Nobody'], default: 'Everyone' },
+      profilePhoto: { type: String, enum: ['Everyone', 'My Connections', 'Connections Except...', 'Only Share With...', 'Nobody'], default: 'Everyone' },
+      status: { type: String, enum: ['Everyone', 'My Connections', 'Connections Except...', 'Only Share With...', 'Nobody'], default: 'Everyone' },
+      
+      lastSeenExceptions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      onlineStatusExceptions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      profilePhotoExceptions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      statusExceptions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      
+      lastSeenOnlyShare: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      onlineStatusOnlyShare: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      profilePhotoOnlyShare: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+      statusOnlyShare: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+    }
   },
   {
     timestamps: true,

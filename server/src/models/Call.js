@@ -19,7 +19,7 @@ const callSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['missed', 'answered', 'rejected', 'ongoing', 'cancelled'],
+      enum: ['missed', 'answered', 'rejected', 'ongoing', 'cancelled', 'declined'],
       default: 'missed',
     },
 
@@ -31,6 +31,29 @@ const callSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Chat',
     },
+    quality: {
+      type: String,
+      enum: ['Excellent', 'Good', 'Fair', 'Poor'],
+      default: 'Good',
+    },
+    networkStatus: {
+      type: String,
+      default: 'Wi-Fi / 4G',
+    },
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+    isArchived: {
+      type: Boolean,
+      default: false,
+    },
+    deletedFor: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
   },
   { timestamps: true }
 );

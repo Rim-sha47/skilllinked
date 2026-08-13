@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -15,6 +15,8 @@ import {
   followUser,
   unfollowUser
 } from '../../redux/slices/connectionSlice';
+import { accessOrCreateChat } from '../../redux/slices/messagingSlice';
+
 
 // ── Helper: Avatar with initials fallback ────────────────────────────────────
 const UserAvatar = ({ user, size = 'md' }) => {
@@ -40,6 +42,7 @@ const Networking = () => {
   const navigate = useNavigate();
   const { connections, pendingRequests, suggestions, isLoading } = useSelector(state => state.connections);
   const { user: currentUser } = useSelector(state => state.auth);
+  const [messagingUserId, setMessagingUserId] = useState(null);
 
   useEffect(() => {
     dispatch(fetchConnections());
@@ -243,7 +246,26 @@ const Networking = () => {
                     )}
                     <p className="text-xs text-text-secondary dark:text-gray-400 truncate">{user.headline || 'SkillLinked Member'}</p>
                   </div>
-                  <Button variant="outline" size="sm" className="text-xs shrink-0 rounded-xl" onClick={() => navigate(`/app/messaging`)}>Message</Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-xs shrink-0 rounded-xl" 
+                    isLoading={messagingUserId === user._id}
+                    onClick={async () => {
+                      if (!user?._id) return;
+                      setMessagingUserId(user._id);
+                      try {
+                        await dispatch(accessOrCreateChat(user._id)).unwrap();
+                        navigate('/app/messaging');
+                      } catch (err) {
+                        console.error('Failed to open chat:', err);
+                      } finally {
+                        setMessagingUserId(null);
+                      }
+                    }}
+                  >
+                    Message
+                  </Button>
                 </Card>
               </motion.div>
             ))}

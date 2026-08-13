@@ -8,6 +8,8 @@ const Certification = require('../models/Certification');
 // @desc    Get current user's profile
 // @route   GET /api/profiles/me
 // @access  Private
+const { scrubUserVisibility } = require('../utils/privacyHelper');
+
 exports.getMyProfile = async (req, res) => {
   try {
     let profile = await Profile.findOne({ user: req.user.id }).populate({
@@ -20,11 +22,13 @@ exports.getMyProfile = async (req, res) => {
       ]
     });
 
-    const userObj = await User.findById(req.user.id)
-      .select('fullName username profilePicture coverPhoto bio headline location followers following followingCompanies')
+    const rawUser = await User.findById(req.user.id)
+      .select('fullName username profilePicture coverPhoto bio headline location followers following followingCompanies privacySettings')
       .populate('followers', 'fullName username profilePicture headline')
       .populate('following', 'fullName username profilePicture headline')
       .populate('followingCompanies', 'name logo industry');
+    const userObj = scrubUserVisibility(rawUser, req.user.id);
+
 
     if (!profile) {
       profile = new Profile({ user: req.user.id, headline: userObj.headline || '', bio: userObj.bio || '', location: userObj.location || '' });
@@ -208,8 +212,13 @@ exports.updateUserInfo = async (req, res) => {
 // @access  Public
 exports.getAllProfiles = async (req, res) => {
   try {
-    const profiles = await Profile.find().populate('user', ['fullName', 'username', 'profilePicture', 'headline']);
-    res.json(profiles);
+    const profiles = await Profile.find().populate('user');
+    const viewerId = req.user ? req.user.id : null;
+    const result = profiles.map(p => {
+      const user = scrubUserVisibility(p.user, viewerId);
+      return { ...(p._doc || p), user };
+    });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -220,19 +229,20 @@ exports.getAllProfiles = async (req, res) => {
 // @access  Public
 exports.getProfileByUserId = async (req, res) => {
   try {
-    const userObj = await User.findById(req.params.user_id)
-      .select('fullName username profilePicture coverPhoto bio headline location followers following followingCompanies')
+    const rawUser = await User.findById(req.params.user_id)
+      .select('fullName username profilePicture coverPhoto bio headline location followers following followingCompanies privacySettings')
       .populate('followers', 'fullName username profilePicture headline')
       .populate('following', 'fullName username profilePicture headline')
       .populate('followingCompanies', 'name logo industry');
 
-    if (!userObj) {
+    if (!rawUser) {
       return res.status(404).json({ message: 'User not found' });
     }
+    const userObj = scrubUserVisibility(rawUser, req.user ? req.user.id : null);
 
     let profile = await Profile.findOne({ user: req.params.user_id });
     if (!profile) {
-      profile = { headline: userObj.headline || '', bio: userObj.bio || '', location: userObj.location || '' };
+      profile = { headline: rawUser.headline || '', bio: rawUser.bio || '', location: rawUser.location || '' };
     }
 
     const experience = await Experience.find({ user: req.params.user_id }).sort({ from: -1 });
@@ -246,15 +256,15 @@ exports.getProfileByUserId = async (req, res) => {
       status: 'accepted'
     });
 
-    const Post = require('../models/Post');
+    const Post = require('../models/POST');
     const postsCount = await Post.countDocuments({ user: req.params.user_id });
 
     res.json({
       ...(profile._doc || profile),
       user: userObj,
-      followersCount: userObj.followers ? userObj.followers.length : 0,
-      followingCount: userObj.following ? userObj.following.length : 0,
-      followingCompaniesCount: userObj.followingCompanies ? userObj.followingCompanies.length : 0,
+      followersCount: rawUser.followers ? rawUser.followers.length : 0,
+      followingCount: rawUser.following ? rawUser.following.length : 0,
+      followingCompaniesCount: rawUser.followingCompanies ? rawUser.followingCompanies.length : 0,
       connectionsCount,
       postsCount,
       experience,
@@ -289,8 +299,25 @@ exports.recordProfileView = async (req, res) => {
         profile.viewedBy = [];
       }
       
-      if (!profile.viewedBy.includes(currentUserId)) {
-        profile.viewedBy.push(currentUserId);
+      const ProfileView = require('../models/ProfileView');
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const recentView = await ProfileView.findOne({
+        viewerId: currentUserId,
+        profileOwnerId: targetUserId,
+        createdAt: { $gte: yesterday }
+      });
+
+      if (!recentView) {
+        await ProfileView.create({
+          viewerId: currentUserId,
+          profileOwnerId: targetUserId
+        });
+        
+        if (!profile.viewedBy.includes(currentUserId)) {
+          profile.viewedBy.push(currentUserId);
+        }
+        
         profile.profileViews = (profile.profileViews || 0) + 1;
         await profile.save();
 
@@ -308,6 +335,7 @@ exports.recordProfileView = async (req, res) => {
 
         if (req.io) {
           req.io.to(targetUserId.toString()).emit('notification', notification);
+
           req.io.to(targetUserId.toString()).emit('profile_viewed');
         }
       }
@@ -593,3 +621,90 @@ exports.uploadChatWallpaper = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// @desc    Update privacy settings
+// @route   PUT /api/profiles/privacy-settings
+// @access  Private
+exports.updatePrivacySettings = async (req, res) => {
+  try {
+    const {
+      lastSeen,
+      onlineStatus,
+      profilePhoto,
+      status,
+      lastSeenExceptions,
+      onlineStatusExceptions,
+      profilePhotoExceptions,
+      statusExceptions,
+      lastSeenOnlyShare,
+      onlineStatusOnlyShare,
+      profilePhotoOnlyShare,
+      statusOnlyShare
+    } = req.body;
+
+    const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.privacySettings) {
+      user.privacySettings = {
+        lastSeen: 'Everyone',
+        onlineStatus: 'Everyone',
+        profilePhoto: 'Everyone',
+        status: 'Everyone',
+        lastSeenExceptions: [],
+        onlineStatusExceptions: [],
+        profilePhotoExceptions: [],
+        statusExceptions: [],
+        lastSeenOnlyShare: [],
+        onlineStatusOnlyShare: [],
+        profilePhotoOnlyShare: [],
+        statusOnlyShare: []
+      };
+    }
+
+    if (lastSeen !== undefined) user.privacySettings.lastSeen = lastSeen;
+    if (onlineStatus !== undefined) user.privacySettings.onlineStatus = onlineStatus;
+    if (profilePhoto !== undefined) user.privacySettings.profilePhoto = profilePhoto;
+    if (status !== undefined) user.privacySettings.status = status;
+    if (lastSeenExceptions !== undefined) user.privacySettings.lastSeenExceptions = lastSeenExceptions;
+    if (onlineStatusExceptions !== undefined) user.privacySettings.onlineStatusExceptions = onlineStatusExceptions;
+    if (profilePhotoExceptions !== undefined) user.privacySettings.profilePhotoExceptions = profilePhotoExceptions;
+    if (statusExceptions !== undefined) user.privacySettings.statusExceptions = statusExceptions;
+    if (lastSeenOnlyShare !== undefined) user.privacySettings.lastSeenOnlyShare = lastSeenOnlyShare;
+    if (onlineStatusOnlyShare !== undefined) user.privacySettings.onlineStatusOnlyShare = onlineStatusOnlyShare;
+    if (profilePhotoOnlyShare !== undefined) user.privacySettings.profilePhotoOnlyShare = profilePhotoOnlyShare;
+    if (statusOnlyShare !== undefined) user.privacySettings.statusOnlyShare = statusOnlyShare;
+
+    await user.save();
+    res.json(user.privacySettings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Upload resume (PDF) to cloudinary and save URL to profile
+// @route   POST /api/profiles/upload-resume
+// @access  Private
+exports.uploadResume = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const resumeUrl = req.file.path; // cloudinary URL
+
+    const profile = await Profile.findOneAndUpdate(
+      { user: req.user.id },
+      { $set: { resume: resumeUrl } },
+      { new: true, upsert: true }
+    );
+
+    res.json({ message: 'Resume uploaded successfully', resumeUrl, profile });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+

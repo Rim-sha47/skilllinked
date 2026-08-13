@@ -153,4 +153,10 @@ router.put('/user-info', protect, require('../controllers/profileController').up
 router.put('/chat-preferences', protect, require('../controllers/profileController').updateChatPreferences);
 router.post('/chat-preferences/wallpaper', protect, upload.single('file'), require('../controllers/profileController').uploadChatWallpaper);
 
+// Privacy Settings route
+router.put('/privacy-settings', protect, require('../controllers/profileController').updatePrivacySettings);
+
+// Resume Upload route
+router.post('/upload-resume', protect, upload.single('resume'), require('../controllers/profileController').uploadResume);
+
 module.exports = router;

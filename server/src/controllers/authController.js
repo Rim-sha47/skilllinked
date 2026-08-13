@@ -17,22 +17,22 @@ exports.generateTokens = generateTokens;
 exports.registerUser = async (req, res) => {
   try {
     console.log('RegisterUser request body:', req.body);
-    const { fullName, username, email, phoneNumber, password } = req.body;
-    // existing logic follows
-    const userExists = await User.findOne({ $or: [{ email }, { username }, { phoneNumber }] });
+    const { username, email, password } = req.body;
+    
+    const userExists = await User.findOne({ $or: [{ email }, { username }] });
     if (userExists) {
-      return res.status(400).json({ message: 'User with email, username or phone number already exists' });
+      return res.status(400).json({ message: 'User with email or username already exists' });
     }
 
-    const user = await User.create({ fullName, username, email, phoneNumber, password, role: 'User' });
+    const user = await User.create({ fullName: username, username, email, password, role: 'User' });
     const { accessToken, refreshToken } = generateTokens(user._id, 'User');
 
     // Notify admins of new registration
     if (req.io) {
       req.io.to('admins').emit('admin_notification', {
         type: 'new_user_registration',
-        message: `New user "${fullName}" (${email}) just registered!`,
-        user: { _id: user._id, fullName, username, email },
+        message: `New user "${user.fullName}" (${email}) just registered!`,
+        user: { _id: user._id, fullName: user.fullName, username, email },
         timestamp: new Date(),
       });
     }
@@ -74,16 +74,9 @@ exports.registerCompany = async (req, res) => {
 // @access  Public
 exports.loginUser = async (req, res) => {
   try {
-    const { identifier, password } = req.body; // identifier can be email, username, or phone
+    const { email, password } = req.body;
 
-    const user = await User.findOne({
-    $or: [
-      { email: identifier },
-      { username: identifier },
-      { phoneNumber: identifier },
-      { fullName: identifier }
-    ]
-  }).select('+password');
+    const user = await User.findOne({ email }).select('+password');
 
     if (!user || !(await user.matchPassword(password))) {
       return res.status(401).json({ message: 'Invalid credentials' });

@@ -126,6 +126,9 @@ const Profile = () => {
   // Connections list for modal
   const [connectionsList, setConnectionsList] = useState([]);
 
+  // Messaging loading state
+  const [loadingChatId, setLoadingChatId] = useState(null);
+
   // Edit post open
   const openEditPost = (post) => {
     setSelectedPostId(post._id);
@@ -449,15 +452,18 @@ const Profile = () => {
                     <button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      closeModal('followersList');
+                      setLoadingChatId(fid);
                       try {
                         await dispatch(accessOrCreateChat(fid)).unwrap();
+                        closeModal('followersList');
                         navigate('/app/messaging');
                       } catch (err) { console.error('Failed to open chat:', err); }
+                      finally { setLoadingChatId(null); }
                     }}
-                    className="text-sm font-semibold px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-text-primary dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    disabled={loadingChatId === fid}
+                    className="text-sm font-semibold px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-text-primary dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                   >
-                    Message
+                    {loadingChatId === fid ? 'Wait...' : 'Message'}
                   </button>
                 </>
               )}
@@ -488,15 +494,18 @@ const Profile = () => {
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      closeModal('followingList');
+                      setLoadingChatId(fid);
                       try {
                         await dispatch(accessOrCreateChat(fid)).unwrap();
+                        closeModal('followingList');
                         navigate('/app/messaging');
                       } catch (err) { console.error('Failed to open chat:', err); }
+                      finally { setLoadingChatId(null); }
                     }}
-                    className="text-sm font-semibold px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-text-primary dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    disabled={loadingChatId === fid}
+                    className="text-sm font-semibold px-4 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-text-primary dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                   >
-                    Message
+                    {loadingChatId === fid ? 'Wait...' : 'Message'}
                   </button>
                 </>
               )}
@@ -829,13 +838,17 @@ const Profile = () => {
                       <Button
                         variant="outline"
                         size="sm"
+                        isLoading={loadingChatId === displayUser._id}
                         onClick={async () => {
                           if (!displayUser?._id) return;
+                          setLoadingChatId(displayUser._id);
                           try {
                             await dispatch(accessOrCreateChat(displayUser._id)).unwrap();
                             navigate('/app/messaging');
                           } catch (err) {
                             console.error('Failed to open chat:', err);
+                          } finally {
+                            setLoadingChatId(null);
                           }
                         }}
                       >

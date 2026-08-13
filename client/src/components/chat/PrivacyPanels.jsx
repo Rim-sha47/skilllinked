@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useSelector, useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { NestedPanelHeader, SettingAction, SettingToggle, SettingSelect } from './SettingsPanels';
-
+import api from '../../services/api';
+import { updateUser } from '../../redux/slices/authSlice';
 export const PrivacyPanel = ({ onBack, onOpenBlockedContacts }) => {
   const [activeSubModal, setActiveSubModal] = useState(null);
+  const navigate = useNavigate();
 
   // States
   const [readReceipts, setReadReceipts] = useState(true);
@@ -32,6 +36,7 @@ export const PrivacyPanel = ({ onBack, onOpenBlockedContacts }) => {
         <div className="px-4 py-3 text-[13px] font-bold text-gray-500 uppercase tracking-wide">Who can see my personal info</div>
         <SettingAction title="Last seen and online" subtitle="Nobody" onClick={() => setActiveSubModal('lastseen')} />
         <SettingAction title="Profile picture" subtitle="Everyone" onClick={() => setActiveSubModal('profilePhoto')} />
+        <SettingAction title="Open Full Settings" subtitle="Manage all privacy settings" onClick={() => navigate('/app/settings/privacy')} />
         <SettingAction title="About" subtitle="Everyone" onClick={() => setActiveSubModal('about')} />
         <SettingAction title="Status" subtitle="My contacts" onClick={() => setActiveSubModal('status')} />
         
@@ -83,24 +88,52 @@ const GenericPrivacySelect = ({ title, onBack }) => {
 };
 
 const LastSeenPanel = ({ onBack }) => {
-  const [who, setWho] = useState('Nobody');
-  const [online, setOnline] = useState('Same as last seen');
+  const dispatch = useDispatch();
+  const { user } = useSelector(s => s.auth);
+  const privacySettings = user?.privacySettings || {};
+  
+  const [who, setWho] = useState(privacySettings.lastSeen || 'Everyone');
+  const [online, setOnline] = useState(privacySettings.onlineStatus || 'Everyone');
+
+  const updateSetting = async (field, value) => {
+    try {
+      const updatedPrivacySettings = { ...user.privacySettings, [field]: value };
+      dispatch(updateUser({ privacySettings: updatedPrivacySettings })); // Optimistic UI update
+      
+      const payload = {};
+      payload[field] = value;
+      await api.put('/profiles/privacy-settings', payload);
+    } catch (err) {
+      console.error('Failed to update privacy settings', err);
+    }
+  };
+
+  const handleWhoChange = (val) => {
+    setWho(val);
+    updateSetting('lastSeen', val);
+  };
+
+  const handleOnlineChange = (val) => {
+    setOnline(val);
+    updateSetting('onlineStatus', val);
+  };
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#111b21]">
       <NestedPanelHeader title="Last seen and online" onBack={onBack} />
       <div className="flex-1 overflow-y-auto p-4">
         <div className="text-[13px] font-bold text-gray-500 uppercase tracking-wide mb-2">Who can see my last seen</div>
-        {['Everyone', 'My contacts', 'My contacts except...', 'Nobody'].map(opt => (
+        {['Everyone', 'My Connections', 'Connections Except...', 'Nobody'].map(opt => (
           <label key={opt} className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-[#202c33] rounded-xl cursor-pointer">
-            <input type="radio" name="lastseen" checked={who === opt} onChange={() => setWho(opt)} className="w-4 h-4 text-blue-500" />
+            <input type="radio" name="lastseen" checked={who === opt} onChange={() => handleWhoChange(opt)} className="w-4 h-4 text-blue-500" />
             <span className="text-gray-900 dark:text-gray-100">{opt}</span>
           </label>
         ))}
 
         <div className="text-[13px] font-bold text-gray-500 uppercase tracking-wide mt-6 mb-2">Who can see when I'm online</div>
-        {['Everyone', 'Same as last seen'].map(opt => (
+        {['Everyone', 'My Connections', 'Same as Last Seen', 'Nobody'].map(opt => (
           <label key={opt} className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-[#202c33] rounded-xl cursor-pointer">
-            <input type="radio" name="online" checked={online === opt} onChange={() => setOnline(opt)} className="w-4 h-4 text-blue-500" />
+            <input type="radio" name="online" checked={online === opt} onChange={() => handleOnlineChange(opt)} className="w-4 h-4 text-blue-500" />
             <span className="text-gray-900 dark:text-gray-100">{opt}</span>
           </label>
         ))}
