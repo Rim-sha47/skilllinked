@@ -19,14 +19,18 @@ exports.registerUser = async (req, res) => {
     console.log('RegisterUser request body:', req.body);
     const { username, email, password } = req.body;
     
-    const userExists = await User.findOne({ $or: [{ email }, { username }] });
-    if (userExists) {
-      return res.status(400).json({ message: 'User with email or username already exists' });
+    const emailExists = await User.findOne({ email });
+    if (emailExists) {
+      return res.status(400).json({ message: 'This email is already registered.' });
+    }
+
+    const usernameExists = await User.findOne({ username });
+    if (usernameExists) {
+      return res.status(400).json({ message: 'Username is already taken.' });
     }
 
     const user = await User.create({ fullName: username, username, email, password, role: 'User' });
-    const { accessToken, refreshToken } = generateTokens(user._id, 'User');
-
+    
     // Notify admins of new registration
     if (req.io) {
       req.io.to('admins').emit('admin_notification', {
@@ -38,7 +42,7 @@ exports.registerUser = async (req, res) => {
     }
 
     res.status(201).json({
-      _id: user._id, fullName: user.fullName, username: user.username, email: user.email, role: user.role, accessToken, refreshToken
+      _id: user._id, fullName: user.fullName, username: user.username, email: user.email, role: user.role
     });
   } catch (error) {
     console.error('Error in registerUser:', error);
@@ -78,8 +82,12 @@ exports.loginUser = async (req, res) => {
 
     const user = await User.findOne({ email }).select('+password');
 
-    if (!user || !(await user.matchPassword(password))) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user) {
+      return res.status(404).json({ message: 'Account not found. Please register first.' });
+    }
+
+    if (!(await user.matchPassword(password))) {
+      return res.status(401).json({ message: 'Incorrect password. Please try again.' });
     }
 
     const { accessToken, refreshToken } = generateTokens(user._id, user.role);

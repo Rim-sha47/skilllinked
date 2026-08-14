@@ -14,6 +14,7 @@ const Signup = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   
   const [form, setForm] = useState({ 
     username: '', 
@@ -40,6 +41,7 @@ const Signup = () => {
   const handleSignup = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
 
     // Basic Validation
     if (!form.username) return setError('Username is required.');
@@ -51,32 +53,16 @@ const Signup = () => {
     setIsLoading(true);
 
     try {
-      const data = await api.post('/auth/register/user', {
+      await api.post('/auth/register/user', {
         username: form.username,
         email: form.email,
         password: form.password,
       });
 
-      // Store tokens
-      localStorage.setItem('token', data.accessToken);
-      if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
-
-      // Dispatch login
-      dispatch(login({
-        user: {
-          _id: data._id,
-          fullName: data.fullName,
-          name: data.fullName,
-          username: data.username || '',
-          email: data.email,
-          role: data.role,
-          profilePicture: data.profilePicture || '',
-        },
-        token: data.accessToken,
-      }));
-
-      // Redirect to dashboard
-      navigate('/app/dashboard');
+      setSuccess('Account created successfully!');
+      setTimeout(() => {
+        navigate('/auth/login');
+      }, 2000);
     } catch (err) {
       if (err.message && err.message.toLowerCase().includes('email or username already exists')) {
          setError('This username or email is already registered.');
@@ -153,6 +139,16 @@ const Signup = () => {
               className="mb-6 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 text-sm font-medium text-center"
             >
               {error}
+            </motion.div>
+          )}
+
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 text-green-600 dark:text-green-400 text-sm font-medium text-center"
+            >
+              {success}
             </motion.div>
           )}
 
@@ -241,10 +237,13 @@ const Signup = () => {
               className="w-full py-2.5 px-4 bg-primary hover:bg-blue-600 text-white rounded-lg font-semibold text-sm transition-all disabled:opacity-70 flex items-center justify-center gap-2 mt-6"
             >
               {isLoading ? (
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Creating Account...
+                </>
               ) : 'Create Account'}
             </motion.button>
           </form>

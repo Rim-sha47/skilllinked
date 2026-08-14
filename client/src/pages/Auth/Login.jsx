@@ -57,9 +57,9 @@ const Login = () => {
       navigate('/app/dashboard');
       
     } catch (err) {
-      if (err.response && err.response.status === 404) {
+      if (err.status === 404) {
         setError('Account not found. Please register first.');
-      } else if (err.response && err.response.status === 401) {
+      } else if (err.status === 401) {
         setError('Incorrect password. Please try again.');
       } else {
         setError(err.message || 'Incorrect email or password. Please try again.');
@@ -199,10 +199,13 @@ const Login = () => {
               className="w-full py-2.5 px-4 bg-primary hover:bg-blue-600 text-white rounded-lg font-semibold text-sm transition-all disabled:opacity-70 flex items-center justify-center gap-2 mt-6"
             >
               {isLoading ? (
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Logging in...
+                </>
               ) : 'Login'}
             </motion.button>
           </form>
