@@ -27,7 +27,7 @@
 <br/>
 
 <!-- Hero Image -->
-<img src="docs/screenshots/landing.png" alt="SkillLinked Landing Page" width="100%" style="border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);"/>
+<img src="docs/screenshots/landing_page.png" alt="SkillLinked Landing Page" width="100%" style="border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);"/>
 
 </div>
 
@@ -59,17 +59,16 @@ Whether you are an individual looking to expand your network, a company seeking 
 
 Here are some glimpses of the stunning SkillLinked application interface. 
 
-### AI Career Hub & Daily Insights
-<img src="docs/screenshots/insights.png" alt="AI Daily Insights" width="100%" style="border-radius: 8px; margin-bottom: 20px;"/>
+### Landing Page
+<img src="docs/screenshots/landing_page.png" width="100%" style="border-radius: 8px; margin-bottom: 20px;"/>
 
-### Dashboard Overview
-<img src="docs/screenshots/dashboard.png" alt="Dashboard Overview" width="100%" style="border-radius: 8px; margin-bottom: 20px;"/>
+### Dashboard & Analytics
+<img src="docs/screenshots/dashboard_overview.png" width="100%" style="border-radius: 8px; margin-bottom: 20px;"/>
+<img src="docs/screenshots/dashboard_insights.png" width="100%" style="border-radius: 8px; margin-bottom: 20px;"/>
 
-### Job Board & Search
-<img src="docs/screenshots/jobs.png" alt="Job Search" width="100%" style="border-radius: 8px; margin-bottom: 20px;"/>
-
-### Companies Directory
-<img src="docs/screenshots/companies.png" alt="Companies Directory" width="100%" style="border-radius: 8px;"/>
+### Application Interface (Jobs & Messages)
+<img src="docs/screenshots/jobs.png" width="100%" style="border-radius: 8px; margin-bottom: 20px;"/>
+<img src="docs/screenshots/messages.png" width="100%" style="border-radius: 8px;"/>
 
 ---
 
